@@ -1,0 +1,21 @@
+{
+  "name": "pixel-character-creator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Procedural pixel-art character and creature generator that runs in the browser.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node tools/publish.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "rolldown tests/run.ts --file .test-out/run.mjs --format esm --platform node > /dev/null && node .test-out/run.mjs",
+    "shot": "node tools/screenshot.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.56.1",
+    "rolldown": "^1.2.12",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.2"
+  }
+}
