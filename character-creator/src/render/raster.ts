@@ -1223,6 +1223,22 @@ export class Renderer {
       if (fade <= 0.05) continue;
       blobs.push([c.x, c.z, r * (0.55 + 0.5 * fade) * pose.shadow, fade]);
     }
+    if (pose.shadow < 0.98 && blobs.length > 1) {
+      // airborne: one calm shadow instead of separate footprints
+      let sw = 0, sx = 0, sz = 0;
+      for (const [bx, bz, br, bw] of blobs) {
+        const m = br * br * bw;
+        sw += m;
+        sx += bx * m;
+        sz += bz * m;
+      }
+      const cx = sx / sw, cz = sz / sw, pull = 0.6 * (1 - pose.shadow) / 0.4;
+      for (const bl of blobs) {
+        bl[0] += (cx - bl[0]) * Math.min(1, pull);
+        bl[1] += (cz - bl[1]) * Math.min(1, pull);
+        bl[2] *= 1.2;
+      }
+    }
     for (const [bx, bz, br, bw] of blobs) {
       const c = this.c2v.apply(new Vec3(bx, 0, bz));
       const rx = br * 1.35, ry = Math.max(1, br * 1.35 * sinE);
@@ -1242,6 +1258,15 @@ export class Renderer {
     }
     const sh = model.palette.shadow;
     for (let i = 0; i < W * H; i++) if (field[i] > 0.33 && out[i] === 0) out[i] = sh;
+    // no isolated shadow specks
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        const i = y * W + x;
+        if (out[i] !== sh) continue;
+        const n = (out[i - 1] === sh ? 1 : 0) + (out[i + 1] === sh ? 1 : 0) + (out[i - W] === sh ? 1 : 0) + (out[i + W] === sh ? 1 : 0);
+        if (n === 0) out[i] = 0;
+      }
+    }
   }
 
   /** Bounding box of the covered pixels of the last frame (for canvas sizing). */
