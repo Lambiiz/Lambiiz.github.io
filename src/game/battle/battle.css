@@ -1,4 +1,5 @@
-.bui { position: fixed; inset: 0; pointer-events: none; z-index: 11; font-family: var(--font-body); }
+.bui { position: fixed; inset: 0; pointer-events: none; z-index: 11; font-family: var(--font-body); animation: bui-in 0.6s ease 0.7s both; }
+@keyframes bui-in { from { opacity: 0; } to { opacity: 1; } }
 .bui .party {
   position: absolute; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 6px;
   min-width: 270px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 3px;
@@ -46,7 +47,7 @@
 .bui .timeline .hit.unc { opacity: 0.3; }
 .bui .timeline .tick { position: absolute; bottom: -15px; font-size: 10px; color: #a89e88; transform: translateX(-50%); }
 
-.bui .hint { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); font-size: 15px; color: #f0e8d4; text-shadow: 0 1px 3px #000; text-align: center; }
+.bui .hint { position: absolute; bottom: 16px; right: 16px; max-width: min(560px, calc(100vw - 330px)); font-size: 15px; line-height: 1.6; color: #f0e8d4; text-shadow: 0 1px 3px #000; text-align: right; }
 .bui .hint kbd { padding: 0 5px; border: 1px solid var(--panel-edge); border-radius: 2px; background: rgba(20,16,28,0.75); font-family: var(--font-body); font-size: 12px; }
 .bui .stop {
   position: absolute; top: 56px; left: 50%; transform: translateX(-50%); font-family: var(--font-title); letter-spacing: 0.5em;

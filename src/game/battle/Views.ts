@@ -239,7 +239,7 @@ export class PreviewView {
       g.visible = true;
       g.position.set(pose.x, pose.y, 0.6);
       const mat = g.material as THREE.MeshBasicMaterial;
-      mat.color.set(0xffffff).lerp(TEAM_COLOR[f.team], 0.55);
+      mat.color.set(0xffffff).lerp(TEAM_COLOR[f.team], 0.5).multiplyScalar(1.5);
       mat.opacity = tr.id === actingId ? 0.6 : 0.42;
       // show the frame the fighter will actually be in
       const info = battleSheetFor(f.look).info;

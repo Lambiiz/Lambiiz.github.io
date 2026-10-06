@@ -69,6 +69,8 @@ export interface Pose {
   blink?: boolean;
   /** Hair / cape trailing offset (px, positive = behind). */
   flow?: number;
+  /** Airborne pose: don't snap the lowest foot to the ground. */
+  air?: boolean;
 }
 
 export const NEUTRAL: Pose = {
@@ -131,22 +133,26 @@ class PuppetPainter {
     const girth = look.girth ?? 1;
     const legL = P.leg * hs, armL = P.arm * hs, torsoL = P.torso * hs;
     const cx = this.ox, ground = this.oy + P.ground;
-    const hip = v(cx + p.hipX, ground - legL - 1 + p.hipY);
-    const chest = add(hip, { x: Math.sin(p.lean) * torsoL, y: -Math.cos(p.lean) * torsoL });
-    const headC = add(chest, { x: Math.sin(p.lean + p.headTilt) * (P.headRy * 0.95) + 0.5, y: -Math.cos(p.lean + p.headTilt) * (P.headRy * 0.95) });
-    const shoulder = add(chest, { x: Math.sin(p.lean) * -1.2, y: Math.cos(p.lean) * 1.6 });
-
-    const leg = (a: [number, number]) => {
-      const knee = add(hip, seg(legL * 0.5, a[0]));
+    const leg = (a: [number, number], h: V2) => {
+      const knee = add(h, seg(legL * 0.5, a[0]));
       const foot = add(knee, seg(legL * 0.5, a[0] + a[1]));
       return { knee, foot };
     };
+    let hip = v(cx + p.hipX, ground - legL - 1 + p.hipY);
+    if (!p.air) {
+      // keep grounded poses grounded: the lowest foot rests on the baseline
+      const low = Math.max(leg(p.legF, hip).foot.y, leg(p.legN, hip).foot.y);
+      hip = v(hip.x, hip.y + (ground - 1 + p.hipY * 0.5) - low);
+    }
+    const chest = add(hip, { x: Math.sin(p.lean) * torsoL, y: -Math.cos(p.lean) * torsoL });
+    const headC = add(chest, { x: Math.sin(p.lean + p.headTilt) * (P.headRy * 0.95) + 0.5, y: -Math.cos(p.lean + p.headTilt) * (P.headRy * 0.95) });
+    const shoulder = add(chest, { x: Math.sin(p.lean) * -1.2, y: Math.cos(p.lean) * 1.6 });
     const arm = (a: [number, number], sh: V2) => {
       const elbow = add(sh, seg(armL * 0.5, a[0] + p.lean));
       const hand = add(elbow, seg(armL * 0.5, a[0] + a[1] + p.lean));
       return { elbow, hand };
     };
-    const lf = leg(p.legF), ln = leg(p.legN);
+    const lf = leg(p.legF, hip), ln = leg(p.legN, hip);
     const shF = add(shoulder, v(-0.8, 0)), shN = add(shoulder, v(0.6, 0));
     const af = arm(p.armF, shF), an = arm(p.armN, shN);
     const flow = p.flow ?? 0;
@@ -647,13 +653,13 @@ function walkPose(view: View, i: number, run = false): Pose {
   const s = Math.sin(ph);
   const bob = Math.abs(Math.cos(ph)) > 0.7 ? 0 : -1;
   if (view === 'side') {
-    const amp = run ? 0.75 : 0.55;
+    const amp = run ? 0.65 : 0.45;
     return {
       ...NEUTRAL,
       lean: run ? 0.15 : 0.04,
       hipY: bob,
-      legN: [s * amp, -Math.max(0, -s) * 0.6 - 0.05],
-      legF: [-s * amp, -Math.max(0, s) * 0.6 - 0.05],
+      legN: [s * amp, -Math.max(0, -s) * 0.5 - 0.05],
+      legF: [-s * amp, -Math.max(0, s) * 0.5 - 0.05],
       armN: [-s * amp * 0.9, -0.3],
       armF: [s * amp * 0.9, -0.3],
       sheathed: true,
@@ -702,8 +708,8 @@ const BATTLE_ANIMS: Record<string, { frames: number; fps: number; loop: boolean;
     pose: (i, n) => {
       const ph = (i / n) * Math.PI * 2, s = Math.sin(ph);
       return {
-        ...NEUTRAL, lean: 0.28, hipY: Math.abs(Math.cos(ph)) > 0.6 ? 0 : -1.5,
-        legN: [s * 0.95, -Math.max(0, -s) * 1.3 - 0.15], legF: [-s * 0.95, -Math.max(0, s) * 1.3 - 0.15],
+        ...NEUTRAL, lean: 0.26, hipY: Math.abs(Math.cos(ph)) > 0.6 ? 0 : -1.5,
+        legN: [s * 0.7, -Math.max(0, -s) * 1.05 - 0.12], legF: [-s * 0.7, -Math.max(0, s) * 1.05 - 0.12],
         armN: [-s * 0.9, -1.1], armF: [s * 0.9, -1.1], weaponAngle: 1.6, flow: 2.5,
       };
     },
@@ -711,12 +717,12 @@ const BATTLE_ANIMS: Record<string, { frames: number; fps: number; loop: boolean;
   jump: {
     frames: 2, fps: 8, loop: false,
     pose: (i) => i === 0
-      ? { ...NEUTRAL, lean: 0.12, hipY: -2, legN: [0.4, -0.2], legF: [-0.6, 0.2], armN: [-2.4, -0.2], armF: [-2.1, -0.4], weaponAngle: 2.6, flow: -1 }
-      : { ...NEUTRAL, lean: 0.2, hipY: -4, legN: [1.1, -1.7], legF: [0.5, -1.4], armN: [-2.6, -0.3], armF: [-2.2, -0.5], weaponAngle: 2.8, flow: -2 },
+      ? { ...NEUTRAL, air: true, lean: 0.12, hipY: -2, legN: [0.4, -0.2], legF: [-0.6, 0.2], armN: [-2.4, -0.2], armF: [-2.1, -0.4], weaponAngle: 2.6, flow: -1 }
+      : { ...NEUTRAL, air: true, lean: 0.2, hipY: -4, legN: [1.1, -1.7], legF: [0.5, -1.4], armN: [-2.6, -0.3], armF: [-2.2, -0.5], weaponAngle: 2.8, flow: -2 },
   },
   fall: {
     frames: 2, fps: 8, loop: true,
-    pose: (i) => ({ ...NEUTRAL, lean: -0.05, hipY: -3, legN: [0.5, -0.5 - i * 0.1], legF: [-0.3, -0.3], armN: [1.6 + i * 0.1, -0.6], armF: [1.9, -0.5], weaponAngle: 1.2, flow: -2.5 - i }),
+    pose: (i) => ({ ...NEUTRAL, air: true, lean: -0.05, hipY: -3, legN: [0.5, -0.5 - i * 0.1], legF: [-0.3, -0.3], armN: [1.6 + i * 0.1, -0.6], armF: [1.9, -0.5], weaponAngle: 1.2, flow: -2.5 - i }),
   },
   cast: {
     frames: 3, fps: 8, loop: false,
@@ -744,7 +750,7 @@ const BATTLE_ANIMS: Record<string, { frames: number; fps: number; loop: boolean;
   },
   hurt: {
     frames: 2, fps: 6, loop: false,
-    pose: (i) => ({ ...NEUTRAL, lean: -0.35 - i * 0.1, hipX: -1 - i, legN: [0.35, -0.2], legF: [-0.5, 0.0], armN: [-0.9, -0.8], armF: [-0.7, -0.6], headTilt: -0.25, weaponAngle: -0.3, flow: -1, blink: true }),
+    pose: (i) => ({ ...NEUTRAL, air: true, lean: -0.35 - i * 0.1, hipX: -1 - i, legN: [0.35, -0.2], legF: [-0.5, 0.0], armN: [-0.9, -0.8], armF: [-0.7, -0.6], headTilt: -0.25, weaponAngle: -0.3, flow: -1, blink: true }),
   },
   guard: {
     frames: 1, fps: 1, loop: true,
@@ -752,7 +758,7 @@ const BATTLE_ANIMS: Record<string, { frames: number; fps: number; loop: boolean;
   },
   ko: {
     frames: 1, fps: 1, loop: false,
-    pose: () => ({ ...NEUTRAL, lean: -1.45, hipY: 8, hipX: -4, legN: [1.2, -0.2], legF: [1.4, -0.6], armN: [-2.4, 0.2], armF: [-2.0, 0.4], headTilt: -0.15, blink: true, sheathed: true }),
+    pose: () => ({ ...NEUTRAL, air: true, lean: -1.45, hipY: 8, hipX: -4, legN: [1.2, -0.2], legF: [1.4, -0.6], armN: [-2.4, 0.2], armF: [-2.0, 0.4], headTilt: -0.15, blink: true, sheathed: true }),
   },
 };
 

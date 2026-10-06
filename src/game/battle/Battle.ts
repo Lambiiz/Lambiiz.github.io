@@ -115,6 +115,12 @@ export class Battle implements GameScene {
   exit(): void {
     for (const [t, fn] of this.listeners) window.removeEventListener(t, fn);
     this.bui.dispose();
+    // free per-battle GPU buffers (materials and textures are shared caches and stay alive)
+    for (const root of [this.scene, this.overlay]) {
+      root.traverse((o) => {
+        if (o instanceof THREE.Mesh || o instanceof THREE.Points) o.geometry.dispose();
+      });
+    }
   }
 
   dof(post: PostFX): void {

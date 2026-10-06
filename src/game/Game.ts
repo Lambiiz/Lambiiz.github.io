@@ -80,10 +80,9 @@ export class Game {
     this.fps += (1 / Math.max(dt, 1e-3) - this.fps) * 0.05;
     this.input.poll();
 
-    let ev: SceneEvent | null = null;
+    // during a transition the scene still renders but its clock is frozen
     const busy = this.transition !== null;
-    ev = this.active.update(busy ? 0 : dt, this.time, this.input);
-    if (busy) this.active.update(dt * 0.0, this.time, this.input);
+    const ev: SceneEvent | null = this.active.update(busy ? 0 : dt, this.time, this.input);
     if (ev && !busy) this.handle(ev);
 
     if (this.transition) this.stepTransition(dt);
