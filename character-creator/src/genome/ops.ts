@@ -77,18 +77,18 @@ export function mutate(family: Family, g: Genome, seed: number, strength: number
     switch (def.kind) {
       case 'float': {
         const range = def.max - def.min;
-        genes[def.id] = Math.min(def.max, Math.max(def.min, (v as number) + rng.gaussian(0, 0.12 * s * range)));
+        genes[def.id] = Math.min(def.max, Math.max(def.min, (v as number) + rng.gaussian(0, 0.25 * s * range)));
         break;
       }
       case 'choice':
-        if (rng.chance(0.12 * s)) genes[def.id] = rng.pick(def.options).id;
+        if (rng.chance(0.22 * s)) genes[def.id] = rng.pick(def.options).id;
         break;
       case 'bool':
-        if (rng.chance(0.08 * s)) genes[def.id] = !(v as boolean);
+        if (rng.chance(0.15 * s)) genes[def.id] = !(v as boolean);
         break;
       case 'color': {
         const c = hexToOklch(v as number);
-        genes[def.id] = oklchToHex(c.l + rng.gaussian(0, 0.05 * s), c.c * (1 + rng.gaussian(0, 0.2 * s)), c.h + rng.gaussian(0, 18 * s));
+        genes[def.id] = oklchToHex(c.l + rng.gaussian(0, 0.08 * s), c.c * (1 + rng.gaussian(0, 0.3 * s)), c.h + rng.gaussian(0, 30 * s));
         break;
       }
     }
