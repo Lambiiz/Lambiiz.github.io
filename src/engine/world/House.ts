@@ -381,7 +381,7 @@ export function buildHouse(input: HouseSpec): HouseResult {
   group.add(found);
 
   // roof
-  const tiles = sharedMat(`roof-${spec.roof}`, () => pixelMaterial(toMaps(roofTiles(spec.seed, spec.roof, 64, 64, 6, 6), { normalStrength: 4 }), { roughness: 0.75 }));
+  const tiles = sharedMat(`roof-${spec.roof}`, () => pixelMaterial(toMaps(roofTiles(spec.seed, spec.roof, 128, 128, 10, 9), { normalStrength: 4 }), { roughness: 0.75 }));
   const under = sharedMat('roof-under', () => pixelMaterial(toMaps(timberTex(31, 0x3a2a20, 16, 16)), { roughness: 1, side: THREE.DoubleSide }));
   const oh = 0.45, ohEnd = 0.4, thick = 0.22;
   const top = by + wallH;

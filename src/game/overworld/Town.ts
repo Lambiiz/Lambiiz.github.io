@@ -100,13 +100,13 @@ function makeAtlas(): Atlas {
 export function buildTown(scene: THREE.Scene, lighting: Lighting): TownBuild {
   const def = layout();
   const maps = {
-    cobble: pixelMaterial(toMaps(cobblestone(1, 0xa89884, 64, 5), { normalStrength: 2.2 }), { roughness: 0.85 }),
-    paving: pixelMaterial(toMaps(cobblestone(2, 0xb0a08a, 64, 8), { normalStrength: 2.2 }), { roughness: 0.85 }),
-    grass: pixelMaterial(toMaps(grass(3, 0x6a9a3a)), { roughness: 1 }),
-    dirt: pixelMaterial(toMaps(dirt(4, 0x9a7a55)), { roughness: 1 }),
-    wall: pixelMaterial(toMaps(stoneBlocks(5, 0x9d9184, 64, 64, 8), { normalStrength: 4 }), { roughness: 0.95 }),
-    earth: pixelMaterial(toMaps(earthSide(6, 0x6e5440, 64, 64)), { roughness: 1 }),
-    steps: pixelMaterial(toMaps(roughStone(7, 0xa8a090, 32)), { roughness: 1 }),
+    cobble: pixelMaterial(toMaps(cobblestone(1, 0xa89884, 128, 8), { normalStrength: 2.4 }), { roughness: 0.85 }),
+    paving: pixelMaterial(toMaps(cobblestone(2, 0xb0a08a, 128, 13), { normalStrength: 2.4 }), { roughness: 0.85 }),
+    grass: pixelMaterial(toMaps(grass(3, 0x6a9a3a, 128)), { roughness: 1 }),
+    dirt: pixelMaterial(toMaps(dirt(4, 0x9a7a55, 128)), { roughness: 1 }),
+    wall: pixelMaterial(toMaps(stoneBlocks(5, 0x9d9184, 128, 128, 13, 1.9), { normalStrength: 4 }), { roughness: 0.95 }),
+    earth: pixelMaterial(toMaps(earthSide(6, 0x6e5440, 128, 128)), { roughness: 1 }),
+    steps: pixelMaterial(toMaps(roughStone(7, 0xa8a090, 64)), { roughness: 1 }),
   };
   const terrain = new Terrain(def, maps);
   const group = new THREE.Group();

@@ -33,10 +33,10 @@ export function buildStage(scene: THREE.Scene, lighting: Lighting): THREE.Group 
     h.push(hr);
   }
   const mats = {
-    grass: pixelMaterial(toMaps(grass(31, 0x6a9a3a)), { roughness: 1 }),
-    dirt: pixelMaterial(toMaps(dirt(32, 0x9a7a55)), { roughness: 1 }),
-    earth: pixelMaterial(toMaps(earthSide(33, 0x6e5440, 64, 64)), { roughness: 1 }),
-    wall: pixelMaterial(toMaps(stoneBlocks(34, 0x9d9184, 64, 64, 8)), { roughness: 1 }),
+    grass: pixelMaterial(toMaps(grass(31, 0x6a9a3a, 128)), { roughness: 1 }),
+    dirt: pixelMaterial(toMaps(dirt(32, 0x9a7a55, 128)), { roughness: 1 }),
+    earth: pixelMaterial(toMaps(earthSide(33, 0x6e5440, 128, 128)), { roughness: 1 }),
+    wall: pixelMaterial(toMaps(stoneBlocks(34, 0x9d9184, 128, 128, 13, 1.9)), { roughness: 1 }),
     steps: pixelMaterial(toMaps(roughStone(35, 0xa8a090, 32)), { roughness: 1 }),
   };
   const terrain = new Terrain({

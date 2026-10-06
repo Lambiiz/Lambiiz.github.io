@@ -69,7 +69,7 @@ export const DEFAULT_GRADE: GradeSettings = {
   vignette: 0.32,
   grain: 0.035,
   bloomStrength: 0.55,
-  bloomThreshold: 0.85,
+  bloomThreshold: 0.72,
 };
 
 const VERT = /* glsl */ `
@@ -81,6 +81,8 @@ const COC_FRAG = /* glsl */ `
 #include <packing>
 uniform sampler2D tColor;
 uniform sampler2D tDepth;
+uniform sampler2D tAO;
+uniform float aoMix;
 uniform float cameraNear, cameraFar;
 uniform float focusDistance, focusRange, nearScale, farScale, maxBlurPx;
 uniform float tiltShift, tiltCenter, tiltBand;
@@ -107,7 +109,7 @@ void main() {
   float mn = min(min(a, b), min(e, f));
   float mx = max(max(a, b), max(e, f));
   float cc = mn < 0.0 ? mn : mx;
-  gl_FragColor = vec4(c * 0.25, cc);
+  gl_FragColor = vec4(c * 0.25 * mix(1.0, texture2D(tAO, vUv).r, aoMix), cc);
 }
 `;
 
@@ -149,12 +151,79 @@ void main() {
 }
 `;
 
+/**
+ * Screen-space ambient occlusion from the depth buffer (half resolution): soft contact shading in
+ * corners, under eaves and around props. Normals are rebuilt from depth, picking the smaller of
+ * the two neighbour differences so depth edges stay crisp.
+ */
+const AO_FRAG = /* glsl */ `
+#include <packing>
+uniform sampler2D tDepth;
+uniform float cameraNear, cameraFar;
+uniform vec2 tanFov;
+uniform vec2 texel;
+uniform float radius, intensity;
+varying vec2 vUv;
+vec3 viewPos(vec2 uv) {
+  float d = texture2D(tDepth, uv).x;
+  float z = -perspectiveDepthToViewZ(d, cameraNear, cameraFar);
+  return vec3((uv * 2.0 - 1.0) * tanFov * z, -z);
+}
+void main() {
+  vec3 P = viewPos(vUv);
+  if (-P.z > cameraFar * 0.9) { gl_FragColor = vec4(1.0); return; }
+  vec3 pr = viewPos(vUv + vec2(texel.x, 0.0)) - P, pl = P - viewPos(vUv - vec2(texel.x, 0.0));
+  vec3 pu = viewPos(vUv + vec2(0.0, texel.y)) - P, pd = P - viewPos(vUv - vec2(0.0, texel.y));
+  vec3 dx = abs(pr.z) < abs(pl.z) ? pr : pl;
+  vec3 dy = abs(pu.z) < abs(pd.z) ? pu : pd;
+  vec3 N = normalize(cross(dx, dy));
+  vec2 sr = radius / (-P.z) / tanFov * 0.5;
+  float rot = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831;
+  float occ = 0.0;
+  for (int i = 0; i < 14; i++) {
+    float fi = float(i);
+    float a = fi * 2.39996 + rot;
+    float r = sqrt((fi + 0.5) / 14.0);
+    vec3 S = viewPos(vUv + vec2(cos(a), sin(a)) * r * sr);
+    vec3 v = S - P;
+    float dist = length(v) + 1e-4;
+    occ += max(0.0, dot(N, v / dist) - 0.12) * (1.0 - smoothstep(radius * 0.6, radius * 1.6, dist));
+  }
+  gl_FragColor = vec4(vec3(clamp(1.0 - occ / 14.0 * intensity, 0.0, 1.0)), 1.0);
+}
+`;
+
+const AO_BLUR_FRAG = /* glsl */ `
+#include <packing>
+uniform sampler2D tAO;
+uniform sampler2D tDepth;
+uniform float cameraNear, cameraFar;
+uniform vec2 texel;
+varying vec2 vUv;
+float lz(vec2 uv) { return -perspectiveDepthToViewZ(texture2D(tDepth, uv).x, cameraNear, cameraFar); }
+void main() {
+  float zc = lz(vUv);
+  float sum = 0.0, wsum = 0.0;
+  for (int y = -2; y <= 2; y++) {
+    for (int x = -2; x <= 2; x++) {
+      vec2 uv = vUv + vec2(float(x), float(y)) * texel;
+      float w = exp(-abs(lz(uv) - zc) * 4.0);
+      sum += texture2D(tAO, uv).r * w;
+      wsum += w;
+    }
+  }
+  gl_FragColor = vec4(vec3(sum / wsum), 1.0);
+}
+`;
+
 const COMPOSITE_FRAG = /* glsl */ `
 #include <packing>
 uniform sampler2D tColor;
 uniform sampler2D tBlur;
 uniform sampler2D tCocHalf;
 uniform sampler2D tDepth;
+uniform sampler2D tAO;
+uniform float aoMix;
 uniform float cameraNear, cameraFar;
 uniform float focusDistance, focusRange, nearScale, farScale, maxBlurPx;
 uniform float tiltShift, tiltCenter, tiltBand;
@@ -168,7 +237,7 @@ float coc(vec2 uv) {
   return clamp(max(c, t), 0.0, 1.0);
 }
 void main() {
-  vec3 sharp = texture2D(tColor, vUv).rgb;
+  vec3 sharp = texture2D(tColor, vUv).rgb * mix(1.0, texture2D(tAO, vUv).r, aoMix);
   vec4 blur = texture2D(tBlur, vUv);
   float c = coc(vUv) * maxBlurPx;           // in full-res pixels
   float k = smoothstep(0.8, 2.6, c);
@@ -187,7 +256,7 @@ void main() {
   vec3 c = (texture2D(tInput, vUv + vec2(-o.x, -o.y)).rgb + texture2D(tInput, vUv + vec2(o.x, -o.y)).rgb
           + texture2D(tInput, vUv + vec2(-o.x, o.y)).rgb + texture2D(tInput, vUv + vec2(o.x, o.y)).rgb) * 0.25;
   float l = max(c.r, max(c.g, c.b));
-  float knee = threshold * 0.5;
+  float knee = threshold * 0.8;
   float soft = clamp(l - threshold + knee, 0.0, 2.0 * knee);
   soft = soft * soft / (4.0 * knee + 1e-4);
   float contrib = max(soft, l - threshold) / max(l, 1e-4);
@@ -314,6 +383,12 @@ export class PostFX {
   private renderer: THREE.WebGLRenderer;
   private sceneRT: THREE.WebGLRenderTarget;
   private cocRT: THREE.WebGLRenderTarget;
+  private aoRT: THREE.WebGLRenderTarget;
+  private aoBlurRT: THREE.WebGLRenderTarget;
+  private aoMat: THREE.ShaderMaterial;
+  private aoBlurMat: THREE.ShaderMaterial;
+  /** Ambient occlusion: radius in world units, strength, and how much of it to apply (0 = off). */
+  readonly ao = { radius: 0.8, intensity: 1.6, mix: 1 };
   private blurRT: THREE.WebGLRenderTarget;
   private compRT: THREE.WebGLRenderTarget;
   private down: THREE.WebGLRenderTarget[] = [];
@@ -335,6 +410,8 @@ export class PostFX {
     depthTexture.type = THREE.UnsignedIntType;
     this.sceneRT = rt(1, 1, { depthBuffer: true, depthTexture, samples: 4 });
     this.cocRT = rt(1, 1);
+    this.aoRT = rt(1, 1);
+    this.aoBlurRT = rt(1, 1);
     this.blurRT = rt(1, 1);
     this.compRT = rt(1, 1);
     for (let i = 0; i < BLOOM_LEVELS; i++) {
@@ -346,9 +423,11 @@ export class PostFX {
       focusDistance: { value: 30 }, focusRange: { value: 2 }, nearScale: { value: 0.1 }, farScale: { value: 0.05 },
       maxBlurPx: { value: 8 }, tiltShift: { value: 0 }, tiltCenter: { value: 0.5 }, tiltBand: { value: 0.3 },
     });
-    this.cocMat = mat(COC_FRAG, { tColor: { value: null }, tDepth: { value: null }, texel: { value: new THREE.Vector2() }, ...dofU() });
+    this.cocMat = mat(COC_FRAG, { tColor: { value: null }, tDepth: { value: null }, tAO: { value: null }, aoMix: { value: 1 }, texel: { value: new THREE.Vector2() }, ...dofU() });
     this.bokehMat = mat(BOKEH_FRAG, { tCoc: { value: null }, texel: { value: new THREE.Vector2() }, maxBlurPx: { value: 8 }, bokehBoost: { value: 2 } });
-    this.compMat = mat(COMPOSITE_FRAG, { tColor: { value: null }, tBlur: { value: null }, tCocHalf: { value: null }, tDepth: { value: null }, ...dofU() });
+    this.compMat = mat(COMPOSITE_FRAG, { tColor: { value: null }, tBlur: { value: null }, tCocHalf: { value: null }, tDepth: { value: null }, tAO: { value: null }, aoMix: { value: 1 }, ...dofU() });
+    this.aoMat = mat(AO_FRAG, { tDepth: { value: null }, cameraNear: { value: 0.1 }, cameraFar: { value: 100 }, tanFov: { value: new THREE.Vector2() }, texel: { value: new THREE.Vector2() }, radius: { value: 1 }, intensity: { value: 1 } });
+    this.aoBlurMat = mat(AO_BLUR_FRAG, { tAO: { value: null }, tDepth: { value: null }, cameraNear: { value: 0.1 }, cameraFar: { value: 100 }, texel: { value: new THREE.Vector2() } });
     this.brightMat = mat(BRIGHT_FRAG, { tInput: { value: null }, texel: { value: new THREE.Vector2() }, threshold: { value: 1 } });
     this.downMat = mat(DOWN_FRAG, { tInput: { value: null }, texel: { value: new THREE.Vector2() } });
     this.upMat = mat(UP_FRAG, { tInput: { value: null }, tPrev: { value: null }, texel: { value: new THREE.Vector2() } });
@@ -367,6 +446,8 @@ export class PostFX {
     this.sceneRT.setSize(this.w, this.h);
     const hw = Math.max(1, this.w >> 1), hh = Math.max(1, this.h >> 1);
     this.cocRT.setSize(hw, hh);
+    this.aoRT.setSize(hw, hh);
+    this.aoBlurRT.setSize(hw, hh);
     this.blurRT.setSize(hw, hh);
     this.compRT.setSize(this.w, this.h);
     let bw = hw, bh = hh;
@@ -414,6 +495,28 @@ export class PostFX {
     r.render(scene, camera);
 
     const maxBlurFull = this.dof.maxBlur * this.h;
+    // 0. ambient occlusion (half res) + depth-aware blur
+    const au = this.aoMat.uniforms;
+    au.tDepth.value = this.sceneRT.depthTexture;
+    au.cameraNear.value = camera.near;
+    au.cameraFar.value = camera.far;
+    const ty = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    au.tanFov.value.set(ty * camera.aspect, ty);
+    au.texel.value.set(2 / this.w, 2 / this.h);
+    au.radius.value = this.ao.radius;
+    au.intensity.value = this.ao.intensity;
+    this.pass(this.aoMat, this.aoRT);
+    const bu = this.aoBlurMat.uniforms;
+    bu.tAO.value = this.aoRT.texture;
+    bu.tDepth.value = this.sceneRT.depthTexture;
+    bu.cameraNear.value = camera.near;
+    bu.cameraFar.value = camera.far;
+    bu.texel.value.set(1 / this.aoRT.width, 1 / this.aoRT.height);
+    this.pass(this.aoBlurMat, this.aoBlurRT);
+    this.cocMat.uniforms.tAO.value = this.aoBlurRT.texture;
+    this.cocMat.uniforms.aoMix.value = this.ao.mix;
+    this.compMat.uniforms.tAO.value = this.aoBlurRT.texture;
+    this.compMat.uniforms.aoMix.value = this.ao.mix;
     // 1. CoC + half-res colour
     this.cocMat.uniforms.tColor.value = this.sceneRT.texture;
     this.cocMat.uniforms.tDepth.value = this.sceneRT.depthTexture;

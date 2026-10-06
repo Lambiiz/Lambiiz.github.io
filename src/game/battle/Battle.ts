@@ -6,6 +6,7 @@ import type { PostFX } from '../../engine/render/PostFX';
 import { Lighting } from '../../engine/render/Lighting';
 import { Motes } from '../../engine/render/Motes';
 import { Sky } from '../../engine/render/Sky';
+import { LightShafts } from '../../engine/render/LightShafts';
 import { cameraYaw } from '../../engine/render/globals';
 import { buildStage } from './Stage';
 import { FighterView, ProjectileView, TeamRing, ActorMarker, laneZ } from './Views';
@@ -77,6 +78,11 @@ export class Battle implements GameScene {
     this.lighting.sky = new Sky(new THREE.Vector3(0, 0, 0));
     this.scene.add(this.lighting.sky);
     buildStage(this.scene, this.lighting);
+    const beams: { x: number; y: number; z: number; width: number; length: number }[] = [];
+    for (let i = 0; i < 9; i++) beams.push({ x: -14 + i * 3.6 + (i % 2) * 1.3, y: i % 3 ? 0 : 1.5, z: -3 - (i % 4) * 2.2, width: 0.9 + (i % 3) * 0.5, length: 14 });
+    this.lighting.shafts = new LightShafts(beams);
+    this.lighting.shafts.gain = 0.8;
+    this.scene.add(this.lighting.shafts);
     const seed = (Math.random() * 2 ** 31) >>> 0;
     this.state = createBattle(encounter, seed);
     for (const f of this.state.fighters) {

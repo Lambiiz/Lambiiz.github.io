@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SHADOW_LAYER } from '../sprite/Sprite3D';
 import type { PostFX } from './PostFX';
 import type { Sky } from './Sky';
+import type { LightShafts } from './LightShafts';
 
 export interface LightPreset {
   sun: number;
@@ -23,28 +24,30 @@ export interface LightPreset {
   highlightTint: [number, number, number];
   saturation: number;
   bloom: number;
+  /** Strength of the sunbeams. */
+  shafts: number;
 }
 
 export const PRESETS: Record<string, LightPreset> = {
   day: {
     sun: 0xfff2dc, sunIntensity: 3.0, elevation: 52, azimuth: 52, sky: 0xbcd4ff, ground: 0x8a7a60, hemiIntensity: 1.25,
     fog: 0xc8d4dc, fogDensity: 0.006, background: 0x9ab4cc, exposure: 0.95, lamps: 0, windows: 0,
-    shadowTint: [0.0, 0.012, 0.03], highlightTint: [1.02, 1.0, 0.97], saturation: 1.1, bloom: 0.45,
+    shadowTint: [0.0, 0.012, 0.03], highlightTint: [1.02, 1.0, 0.97], saturation: 1.1, bloom: 0.45, shafts: 0.1,
   },
   golden: {
     sun: 0xffc88a, sunIntensity: 3.4, elevation: 26, azimuth: 62, sky: 0x9ab0e0, ground: 0x7a5a48, hemiIntensity: 1.15,
     fog: 0xe0b088, fogDensity: 0.009, background: 0xd8a070, exposure: 1.0, lamps: 0.35, windows: 0.06,
-    shadowTint: [0.0, 0.02, 0.045], highlightTint: [1.06, 0.99, 0.9], saturation: 1.12, bloom: 0.6,
+    shadowTint: [0.0, 0.02, 0.045], highlightTint: [1.06, 0.99, 0.9], saturation: 1.12, bloom: 0.6, shafts: 0.32,
   },
   dusk: {
     sun: 0xff8a6a, sunIntensity: 1.6, elevation: 9, azimuth: 70, sky: 0x6a6ab8, ground: 0x4a3a50, hemiIntensity: 1.25,
     fog: 0x8a6a90, fogDensity: 0.012, background: 0x6a5a8a, exposure: 1.15, lamps: 1.0, windows: 0.9,
-    shadowTint: [0.01, 0.0, 0.05], highlightTint: [1.05, 0.95, 0.92], saturation: 1.08, bloom: 0.8,
+    shadowTint: [0.01, 0.0, 0.05], highlightTint: [1.05, 0.95, 0.92], saturation: 1.08, bloom: 0.8, shafts: 0.16,
   },
   night: {
     sun: 0x9ab4ff, sunIntensity: 0.75, elevation: 40, azimuth: -30, sky: 0x3656a0, ground: 0x1a2040, hemiIntensity: 1.25,
     fog: 0x1a2440, fogDensity: 0.014, background: 0x101830, exposure: 1.35, lamps: 1.4, windows: 1.3,
-    shadowTint: [0.0, 0.01, 0.05], highlightTint: [1.0, 0.98, 1.0], saturation: 1.0, bloom: 0.95,
+    shadowTint: [0.0, 0.01, 0.05], highlightTint: [1.0, 0.98, 1.0], saturation: 1.0, bloom: 0.95, shafts: 0.07,
   },
 };
 
@@ -76,6 +79,7 @@ export class Lighting {
   private t = 1;
   presetName = 'golden';
   sky: Sky | null = null;
+  shafts: LightShafts | null = null;
   /** Half-size of the shadow box (world units). */
   shadowSize = 22;
 
@@ -192,6 +196,7 @@ export class Lighting {
     this.fog.density = c.fogDensity;
     this.scene.background = new THREE.Color(c.background);
     this.sky?.update(c.sky, c.background, c.sun, this.sunDir);
+    this.shafts?.setLight(this.sunDir, new THREE.Color(c.sun), c.shafts);
   }
 }
 
@@ -212,6 +217,6 @@ function blend(a: LightPreset, b: LightPreset, t: number): LightPreset {
     windows: n(a.windows, b.windows),
     shadowTint: [n(a.shadowTint[0], b.shadowTint[0]), n(a.shadowTint[1], b.shadowTint[1]), n(a.shadowTint[2], b.shadowTint[2])],
     highlightTint: [n(a.highlightTint[0], b.highlightTint[0]), n(a.highlightTint[1], b.highlightTint[1]), n(a.highlightTint[2], b.highlightTint[2])],
-    saturation: n(a.saturation, b.saturation), bloom: n(a.bloom, b.bloom),
+    saturation: n(a.saturation, b.saturation), bloom: n(a.bloom, b.bloom), shafts: n(a.shafts, b.shafts),
   };
 }

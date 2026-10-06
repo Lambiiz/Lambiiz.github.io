@@ -5,6 +5,7 @@ import type { PostFX } from '../../engine/render/PostFX';
 import type { Input } from '../../engine/core/Input';
 import { Motes } from '../../engine/render/Motes';
 import { Sky } from '../../engine/render/Sky';
+import { LightShafts } from '../../engine/render/LightShafts';
 import { cameraYaw } from '../../engine/render/globals';
 import { LOOKS, type CharacterLook } from '../../engine/character/look';
 import { speechBubble } from '../../engine/pixel/foliage';
@@ -41,7 +42,7 @@ const HELP = `<kbd>WASD</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> t
 
 export class Overworld implements GameScene {
   readonly scene = new THREE.Scene();
-  readonly rig = new CameraRig({ fov: 27, pitch: 27, distance: 27, minDistance: 16, maxDistance: 36, lookAhead: 3.2, lookHeight: 1.4 });
+  readonly rig = new CameraRig({ fov: 27, pitch: 28, distance: 23, minDistance: 14, maxDistance: 34, lookAhead: 2.6, lookHeight: 1.2 });
   readonly lighting: Lighting;
   readonly town: TownBuild;
   readonly player: Actor;
@@ -63,6 +64,15 @@ export class Overworld implements GameScene {
     this.lighting.sky = new Sky(new THREE.Vector3(TOWN_W / 2, 0, 12));
     this.scene.add(this.lighting.sky);
     this.town = buildTown(this.scene, this.lighting);
+    // sunbeams falling across the plaza and the terrace street
+    const beams: { x: number; y: number; z: number; width: number; length: number }[] = [];
+    for (let i = 0; i < 10; i++) {
+      const x = 3 + ((i * 7.31) % 28), z = 1 + ((i * 3.7) % 11);
+      beams.push({ x, y: this.town.terrain.heightAt(x, z), z, width: 0.5 + (i % 4) * 0.3, length: 8 + (i % 3) * 2 });
+    }
+    this.lighting.shafts = new LightShafts(beams);
+    this.lighting.shafts.gain = 0.6;
+    this.scene.add(this.lighting.shafts);
     this.player = new Actor(LOOKS.hero, this.town.terrain);
     this.player.place(this.town.start.x, this.town.start.z);
     this.player.heading = Math.PI;

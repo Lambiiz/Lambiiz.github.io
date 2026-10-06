@@ -45,7 +45,7 @@ export function cobblestone(seed = 1, base = 0xa79a86, size = 64, cell = 7): Pix
       // baked light from the upper-left; the normal map adds the real lighting on top
       const lit = -(v.fx + v.fy) / (cell * 1.2);
       const n = fbm(x, y, size, size, 8, 2, seed) - 0.5;
-      let c = shade(stone, lit * 0.22 + n * 0.22 + (round - 1) * 0.2);
+      let c = shade(stone, lit * 0.16 + n * 0.16 + (round - 1) * 0.16);
       if (round < 0.3) c = shade(c, -0.15);
       pc.set(x, y, c);
       pc.setHeight(x, y, 0.25 + h * 0.6 + n * 0.1);
@@ -108,7 +108,7 @@ export function dirt(seed = 3, base = 0x9a7a55, size = 64): PixelCanvas {
 }
 
 /** Cut-stone retaining wall / foundation: staggered rows of blocks. */
-export function stoneBlocks(seed = 4, base = 0x9d9184, w = 64, h = 64, rowH = 8): PixelCanvas {
+export function stoneBlocks(seed = 4, base = 0x9d9184, w = 64, h = 64, rowH = 8, blockScale = 1): PixelCanvas {
   const pc = new PixelCanvas(w, h);
   const rng = new Rng(seed);
   const rows = Math.round(h / rowH);
@@ -116,7 +116,7 @@ export function stoneBlocks(seed = 4, base = 0x9d9184, w = 64, h = 64, rowH = 8)
     let x = Math.floor(rng.next() * 10);
     const y0 = r * rowH;
     while (x < w + 12) {
-      const bw = rng.int(9, 16);
+      const bw = rng.int(Math.round(9 * blockScale), Math.round(16 * blockScale));
       const tint = rng.next();
       const col = mix(mix(base, 0x7d7a86, tint * 0.6), 0xb5a28a, rng.next() * 0.3);
       for (let j = 0; j < rowH; j++) {

@@ -47,9 +47,16 @@ takes headless screenshots of the dev server. `window.__game` exposes hooks (`te
 Z / X zoom · T time of day · B start a battle. Captain Ardel on the low road offers a fight, and
 walking off the east end of the low road enters the Wilds.
 
-**Battle:** ↑ ↓ choose a command (the preview updates as you move) · Space select. Aimed commands
-(Move, Jump, Fireball, Arrow): aim with the mouse or WASD, click / Space to confirm, Esc /
+**Battle:** ← → (or ↑ ↓) choose a command (the preview updates as you move) · Space select. Aimed
+commands (Move, Jump, Fireball, Arrow): aim with the mouse or WASD, click / Space to confirm, Esc /
 right-click to go back.
+
+Reading a battle: the **turn-order bar** at the top shows who acts when (portraits on a time axis).
+On your turn it also shows where the highlighted command puts your next turn ("next"). The
+fighter whose turn it is stands on a pulsing gold ring under a chevron. While you choose, the
+**holograms** replay exactly what will happen in the next 2.5 s. They turn grey once someone
+else gets to decide, because from there it may change. The **What happens** list spells the same
+thing out, knock-backs included.
 
 ---
 
@@ -60,12 +67,14 @@ src/
   index.html, main.ts     dev entry: the game, or ?view=sprites
   engine/                 reusable, game-agnostic
     core/                 Input, CameraRig (diorama follow camera), seeded Rng + noise
+    character/            look (what a character wears) · model (rigged 3D model from primitives,
+                          cel material) · poses (joint-angle animations) · bake (render → pixel
+                          sprite sheets) · sheets (bake-once cache)
     pixel/                PixelCanvas (software pixel surface with height + emissive channels)
                           color (hue-shifted shading) · surfaces (cobble, grass, bricks, roof tiles…)
-                          characters (the puppet rig + sheets) · foliage (trees, bushes, signs…)
-                          texture (canvas → three.js textures / lit pixel materials)
-    render/               PostFX (DoF, bloom, grade, transitions, overlay pass) · Lighting
-                          (time-of-day presets, sun shadows, lamps) · Sky · Motes · globals
+                          foliage (trees, bushes, signs…) · texture (canvas → three.js textures)
+    render/               PostFX (AO, DoF, bloom, grade, transitions, overlay pass) · Lighting
+                          (time-of-day presets, sun shadows, lamps) · LightShafts · Sky · Motes
     sprite/               Sprite3D (lit billboard + shadow proxy) · BillboardBatch · Atlas
     world/                Terrain (tile heights, stairs, walls, walk map) · House · Props
   game/
@@ -80,36 +89,54 @@ src/
         encounters.ts     party + enemy definitions
       Battle.ts           turn flow (time stop, menus, aiming) and rendering of the sim
       Stage.ts            the battle diorama
-      Views.ts            fighter / projectile / preview visuals
-      BattleUI.ts         DOM HUD (party, plates, menu, timeline)
+      Views.ts            fighters, projectiles, team rings, the acting-fighter marker
+      Hologram.ts         the preview: hologram replay of the predicted future
+      BattleUI.ts         DOM HUD (turn order, what-happens list, plates, command bar)
     ui/                   dialog box, prompts, banners
 tests/sim.test.ts         preview == reality, tick by tick
 ```
 
 ### The HD-2D look
 
-- **One pixel scale everywhere:** 16 texels per world unit, nearest-filtered. Ground, walls, roofs
-  and characters all share it, so nothing looks higher-resolution than anything else.
+- **Pixel density:** characters are 28 texels per world unit, and ground, walls and roofs are 32.
+  House facades are painted at 16. Everything is nearest-filtered.
 - **Lit billboards.** Characters are upright quads that turn to the camera's yaw. Their shading
   normal leans upward, so the sun and lanterns light them like the ground they stand on. A second,
   invisible quad turned toward the sun casts the shadow (it lives on a layer only the shadow
   camera renders), so the shadow is always the full silhouette.
 - **Normal-mapped pixel textures.** Every procedural surface also paints a height channel that
   becomes a normal map, so cobbles, bricks and timber catch the low sun.
-- **Post stack** (`PostFX`): HDR + MSAA scene → circle-of-confusion from depth (plus a screen-space
-  tilt-shift band) → half-res bokeh gather (bright pixels bloom into discs) → composite → dual-filter
-  bloom → exposure, ACES, grade (teal-lifted shadows, warm highlights), vignette, grain.
+- **Post stack** (`PostFX`): HDR + MSAA scene → screen-space ambient occlusion (from depth) →
+  circle-of-confusion from depth (plus a screen-space tilt-shift band) → half-res bokeh gather
+  (bright pixels bloom into discs) → composite → dual-filter bloom → exposure, ACES, grade
+  (teal-lifted shadows, warm highlights), vignette, grain.
+- **Light shafts:** soft additive ribbons along the real sun direction, occluded by buildings. Their
+  strength and colour follow the time of day.
 - **Overlay pass:** world-space UI (the battle preview) renders after post-processing, sharp and
   ungraded, on top of everything.
 
-### Sprite sizes
+### Characters: baked from 3D models
 
-Following the tip about combat frames: **overworld frames are 32×32** (4 directions, idle + walk)
-and **battle frames are 64×64**, side view. The body is about the same size in both. The battle
-frames just have room for weapons, lunges, jumps, knock-back and big casts. Both come from the same
-puppet rig in `characters.ts`: a pose is a set of joint angles, so every outfit works in every pose
-automatically. Adding an animation means adding one entry to `BATTLE_ANIMS`. Adding a character
-means adding one entry to `LOOKS`.
+Characters are not drawn frame by frame. Each one is a small rigged 3D model built from
+primitives (`character/model.ts`): head, hair locks and fringe, torso, skirt or coat, cape, limbs,
+hat and weapon. A pose is a set of joint angles (`poses.ts`). At load time `bake.ts` renders every
+frame at its final pixel size with an orthographic camera and a four-band cel material: flat,
+hue-shifted colour bands and no anti-aliasing, so it reads as pixel art. A CPU pass then finishes
+each frame like a pixel artist would:
+
+- contour lines where a nearer part overlaps a farther one (from a depth pass);
+- eyes, mouth and blush painted pixel by pixel at the face's projected position;
+- a soft coloured outline.
+
+That is what makes **8 directions** and **three-quarter views** cheap. The sideways views are
+turned toward the camera (east is drawn at 72°), so faces stay visible, as in HD-2D games.
+Battle sprites face right or left at 58°. Sheets: overworld 64×64 frames (8 directions × idle,
+walk); battle 96×96 frames (2 facings × 10 animations), with room for weapons and big poses.
+Characters are about 48 px tall.
+
+To add a character, add a `LOOKS` entry in `character/look.ts`. To add an animation, add an
+`AnimSpec` in `poses.ts`. `/?view=sprites&scale=4&only=hero&strip=idle:0` shows the result (every
+direction side by side).
 
 ### The battle simulation and the exact preview
 
@@ -129,19 +156,35 @@ The design goal is *the preview is never a guess*. To make that true:
    hits show a `?`.
 
 `npm test` checks this claim. It plays 25 seeded battles, and at every player turn it compares
-the prediction with what really happens, position by position, with `===`.
+the prediction with what really happens, tick by tick, with `===`: every fighter's position and
+animation, and every projectile. It also checks that soft collision never lets two fighters
+overlap.
 
 **Turn flow:** gauges fill in real time (`atbRate` per second). When one fills, `step()` sets
-`state.awaiting` and stops. Enemy turns are answered at once by `ai.think`. A party turn stops
-time, opens the menu and previews the highlighted command live. `decide()` hands over the command
-and time runs again. 'Wait' keeps the current action, so you can let a jump or a run play out.
+`state.awaiting` and stops. Enemy turns are answered at once by `ai.think`, with a short
+slow-motion beat and a callout so you see what was chosen. A party turn stops time, opens the
+command bar and previews the highlighted command live. `decide()` hands over the command and time
+runs again. Each command sets where the gauge restarts (`RECOVERY` in `sim.ts`: Wait 0.5 so the
+next turn comes quickly, Fireball −0.2 so it comes late). Choosing an action is therefore also
+choosing when you act next. 'Wait' keeps the current action, so you can let a jump or a run play
+out.
+
+**Soft collision:** fighters closer than `SEPARATION` are nudged apart a little every tick (friend
+or foe). They can shove and brush past but never stand inside each other. It is part of the sim,
+so the preview includes it.
+
+**The preview, on screen** (`Hologram.ts`): the prediction records every tick. While you choose,
+translucent team-tinted copies of everyone who will move or act replay it on a loop. Impacts
+flash and damage pops out at the moment they happen. Rings mark where hits land, with damage and
+time. After the first moment anyone else gets to decide, the replay turns grey. Dotted paths are
+only drawn for the acting fighter's own aimed command.
 
 **Extending it:**
 
 - A new action: add a `Command` variant (`types.ts`), its frame data and a `case` in `runAction`
   (`sim.ts`), a `Skill` name, then a menu entry and default aim in `Battle.ts`. The preview,
   timeline and tests pick it up with no extra work.
-- A new enemy: a `look` in `characters.ts` plus a spec in `encounters.ts`; a new brain goes in
+- A new enemy: a `look` in `character/look.ts` plus a spec in `encounters.ts`; a new brain goes in
   `ai.ts`.
 
 ### Things deliberately left for later
@@ -151,5 +194,5 @@ and time runs again. 'Wait' keeps the current action, so you can let a jump or a
 - Enemy brains are simple. Party turn order is first-come.
 - Interiors, map transitions, saving, audio.
 - Touch / gamepad aiming in battle (gamepad works in the overworld).
-- Art is a procedural placeholder: the rig produces good silhouettes, and hand-tuned per-character
-  details would be the next step.
+- Art is still procedural. The model rig can take much more per-character detail, and hand-drawn
+  sheets in the same layout could replace the bake for key characters.
