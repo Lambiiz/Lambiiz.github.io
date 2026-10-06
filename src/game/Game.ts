@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PostFX } from '../engine/render/PostFX';
 import { Input } from '../engine/core/Input';
 import { updateGlobals } from '../engine/render/globals';
+import { setBakeRenderer } from '../engine/character/sheets';
 import { UI } from './ui/UI';
 import { Overworld } from './overworld/Overworld';
 import type { GameScene, SceneEvent } from './SceneTypes';
@@ -32,6 +33,7 @@ export class Game {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.NoToneMapping;
     root.appendChild(this.renderer.domElement);
+    setBakeRenderer(this.renderer);
     this.post = new PostFX(this.renderer);
     this.ui = new UI(root);
     this.overworld = new Overworld(this.ui);

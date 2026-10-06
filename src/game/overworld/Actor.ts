@@ -1,16 +1,8 @@
 import * as THREE from 'three';
-import { Sprite3D, SheetTexture } from '../../engine/sprite/Sprite3D';
-import { overworldSheet, type CharacterLook } from '../../engine/pixel/characters';
+import { Sprite3D } from '../../engine/sprite/Sprite3D';
+import { overworldSheet } from '../../engine/character/sheets';
+import type { CharacterLook } from '../../engine/character/look';
 import type { Terrain } from '../../engine/world/Terrain';
-
-export type Facing = 'down' | 'up' | 'left' | 'right';
-
-const sheetCache = new Map<CharacterLook, SheetTexture>();
-function sheetFor(look: CharacterLook): SheetTexture {
-  let s = sheetCache.get(look);
-  if (!s) sheetCache.set(look, (s = new SheetTexture(overworldSheet(look))));
-  return s;
-}
 
 /** A walking character in the overworld: position, facing, collision and its sprite. */
 export class Actor {
@@ -23,7 +15,7 @@ export class Actor {
   radius = 0.32;
 
   constructor(look: CharacterLook, private terrain: Terrain) {
-    this.sprite = new Sprite3D(sheetFor(look), { footPx: 30, normalUp: 1.3, fill: 0.14, stretch: 1.1 });
+    this.sprite = new Sprite3D(overworldSheet(look), { normalUp: 2.2, fill: 0.16, stretch: 1.06 });
     this.sprite.play('idle');
   }
 
@@ -52,18 +44,18 @@ export class Actor {
     this.heading = Math.atan2(p.x - this.pos.x, p.z - this.pos.z);
   }
 
-  /** Screen-relative facing for the camera at yaw `camYaw`. */
-  facing(camYaw: number): Facing {
+  /**
+   * Screen-relative direction for the camera at yaw `camYaw`: an index into the sheet's 8
+   * directions (0 = toward the camera, then clockwise as seen from above: se, e, ne, n, nw, w, sw).
+   */
+  direction(camYaw: number): number {
     const a = this.heading - camYaw;
-    const sx = Math.sin(a), sz = Math.cos(a);
-    if (Math.abs(sx) > Math.abs(sz) * 1.05) return sx > 0 ? 'right' : 'left';
-    return sz > 0 ? 'down' : 'up';
+    const k = Math.round(a / (Math.PI / 4));
+    return ((k % 8) + 8) % 8;
   }
 
   update(dt: number, camYaw: number, sunYaw: number): void {
-    const f = this.facing(camYaw);
-    this.sprite.rowOffset = f === 'down' ? 0 : f === 'up' ? 1 : 2;
-    this.sprite.flip = f === 'left';
+    this.sprite.dir = this.direction(camYaw);
     this.sprite.play(this.moving ? 'walk' : 'idle');
     this.sprite.speed = this.moving ? (this.running ? 1.6 : 1) : 1;
     this.sprite.position.copy(this.pos);

@@ -6,7 +6,7 @@ import type { Input } from '../../engine/core/Input';
 import { Motes } from '../../engine/render/Motes';
 import { Sky } from '../../engine/render/Sky';
 import { cameraYaw } from '../../engine/render/globals';
-import { LOOKS, type CharacterLook } from '../../engine/pixel/characters';
+import { LOOKS, type CharacterLook } from '../../engine/character/look';
 import { speechBubble } from '../../engine/pixel/foliage';
 import { spriteTexture } from '../../engine/pixel/texture';
 import { buildTown, TOWN_W, type TownBuild } from './Town';

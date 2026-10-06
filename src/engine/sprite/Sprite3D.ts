@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { AnimDef, SheetInfo } from '../pixel/characters';
-import { PX_PER_UNIT, spriteTexture } from '../pixel/texture';
+import type { AnimDef, SheetInfo } from '../character/bake';
+import { spriteTexture } from '../pixel/texture';
 
 /** Layer that only the sun's shadow camera renders: sun-facing silhouette proxies live here. */
 export const SHADOW_LAYER = 1;
@@ -10,6 +10,34 @@ export class SheetTexture {
   readonly texture: THREE.Texture;
   constructor(readonly info: SheetInfo) {
     this.texture = spriteTexture(info.canvas);
+  }
+
+  /** Column and row of animation `anim`, `seconds` in, for direction `dir`. */
+  frame(anim: string, seconds: number, dir: number): { col: number; row: number; done: boolean } {
+    const info = this.info;
+    const a = info.anims[anim] ?? info.anims.idle;
+    let f = Math.floor(seconds * a.fps);
+    let done = false;
+    if (a.loop) f = ((f % a.frames) + a.frames) % a.frames;
+    else if (f >= a.frames) { f = a.frames - 1; done = true; }
+    return { col: Math.max(0, f), row: a.row + Math.min(dir, info.dirs.length - 1) * info.rowsPerDir, done };
+  }
+
+  /** Point a texture (a clone of `texture`) at one frame. */
+  aim(tex: THREE.Texture, col: number, row: number): void {
+    const { cols, rows } = this.info;
+    tex.repeat.set(1 / cols, 1 / rows);
+    tex.offset.set(col / cols, 1 - (row + 1) / rows);
+  }
+
+  /** Plane geometry sized for one frame, origin at the feet. */
+  geometry(stretch = 1): THREE.PlaneGeometry {
+    const { frameW, frameH, footPx, ppu } = this.info;
+    const w = frameW / ppu, h = frameH / ppu;
+    const geo = new THREE.PlaneGeometry(w, h);
+    geo.translate(0, h / 2 - (frameH - footPx) / ppu, 0);
+    geo.scale(1, stretch, 1);
+    return geo;
   }
 }
 
@@ -30,8 +58,6 @@ function getBlobTexture(): THREE.Texture {
 }
 
 export interface SpriteOptions {
-  /** Pixel row (from the top of a frame) where the feet touch the ground. */
-  footPx?: number;
   /** How far the shading normal leans up (0 = faces the camera, larger = lit like the ground). */
   normalUp?: number;
   /** Self-illumination that keeps the shadow side readable. */
@@ -61,29 +87,19 @@ export class Sprite3D extends THREE.Group {
   groundY = 0;
   /** Visual lift above the ground (jumps). */
   lift = 0;
-  flip = false;
+  /** Direction index into the sheet's direction blocks. */
+  dir = 0;
   anim = 'idle';
   private animTime = 0;
-  private row = 0;
-  private col = 0;
-  /** Extra row offset for directional sheets (overworld: 0 down, 1 up, 2 side). */
-  rowOffset = 0;
   speed = 1;
   private finished = false;
 
   constructor(sheet: SheetTexture, opts: SpriteOptions = {}) {
     super();
     this.sheet = sheet;
-    const { frameW, frameH, cols, rows } = sheet.info;
-    const w = frameW / PX_PER_UNIT, h = frameH / PX_PER_UNIT;
-    const footPx = opts.footPx ?? frameH - 1;
-    const stretch = opts.stretch ?? 1;
+    const w = sheet.info.frameW / sheet.info.ppu;
     this.tex = sheet.texture.clone();
-    this.tex.repeat.set(1 / cols, 1 / rows);
-
-    const geo = new THREE.PlaneGeometry(w, h);
-    geo.translate(0, h / 2 - (frameH - footPx) / PX_PER_UNIT, 0);
-    geo.scale(1, stretch, 1);
+    const geo = sheet.geometry(opts.stretch ?? 1);
 
     const up = opts.normalUp ?? 1.3;
     const mat = new THREE.MeshLambertMaterial({
@@ -123,17 +139,7 @@ export class Sprite3D extends THREE.Group {
   }
 
   setFrame(col: number, row: number): void {
-    this.col = col;
-    this.row = row;
-    const { cols, rows } = this.sheet.info;
-    if (this.flip) {
-      this.tex.repeat.x = -1 / cols;
-      this.tex.offset.x = (col + 1) / cols;
-    } else {
-      this.tex.repeat.x = 1 / cols;
-      this.tex.offset.x = col / cols;
-    }
-    this.tex.offset.y = 1 - (row + 1) / rows;
+    this.sheet.aim(this.tex, col, row);
   }
 
   play(name: string, restart = false): void {
@@ -160,18 +166,10 @@ export class Sprite3D extends THREE.Group {
 
   /** Advance the animation and orient toward the camera and the sun. */
   update(dt: number, cameraYaw: number, sunYaw: number): void {
-    const a = this.animDef;
-    if (a) {
-      this.animTime += dt * this.speed;
-      let f = Math.floor(this.animTime * a.fps);
-      if (a.loop) f %= a.frames;
-      else if (f >= a.frames) { f = a.frames - 1; this.finished = true; }
-      // overworld sheets: walk frames follow the two idle columns
-      const colBase = this.anim === 'walk' && this.sheet.info.frameW === 32 ? 2 : 0;
-      this.setFrame(colBase + f, a.row + this.rowOffset);
-    } else {
-      this.setFrame(this.col, this.row);
-    }
+    this.animTime += dt * this.speed;
+    const f = this.sheet.frame(this.anim, this.animTime, this.dir);
+    this.finished = f.done;
+    this.setFrame(f.col, f.row);
     this.mesh.rotation.y = cameraYaw;
     this.proxy.rotation.y = sunYaw;
     this.mesh.position.y = this.lift;

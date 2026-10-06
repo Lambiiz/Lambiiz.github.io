@@ -1,18 +1,18 @@
 import * as THREE from 'three';
-import { Sprite3D, SheetTexture } from '../../engine/sprite/Sprite3D';
-import { battleSheet, LOOKS, type CharacterLook } from '../../engine/pixel/characters';
+import { Sprite3D, type SheetTexture } from '../../engine/sprite/Sprite3D';
+import { battleSheet } from '../../engine/character/sheets';
 import { PixelCanvas } from '../../engine/pixel/PixelCanvas';
 import { spriteTexture } from '../../engine/pixel/texture';
 import type { Fighter, Projectile } from './sim/types';
 import { TPS } from './sim/types';
 import type { Prediction } from './sim/predict';
 
-const sheets = new Map<string, SheetTexture>();
 export function battleSheetFor(look: string): SheetTexture {
-  let s = sheets.get(look);
-  if (!s) sheets.set(look, (s = new SheetTexture(battleSheet((LOOKS as Record<string, CharacterLook>)[look] ?? LOOKS.hero))));
-  return s;
+  return battleSheet(look);
 }
+
+/** Battle sheets hold two directions: 0 facing right, 1 facing left. */
+export const dirFor = (facing: number) => (facing < 0 ? 1 : 0);
 
 /** Ground-plane z for a fighter's cosmetic lane (the sim itself is strictly 2D). */
 export const laneZ = (lane: number) => lane * 0.6;
@@ -23,7 +23,7 @@ export class FighterView {
   private flash = 0;
 
   constructor(readonly id: number, look: string) {
-    this.sprite = new Sprite3D(battleSheetFor(look), { footPx: 60, normalUp: 1.1, fill: 0.16, stretch: 1.04, blobSize: 1.1, blobOpacity: 0.45 });
+    this.sprite = new Sprite3D(battleSheetFor(look), { normalUp: 2.2, fill: 0.16, stretch: 1.02, blobSize: 1.1, blobOpacity: 0.45 });
   }
 
   sync(prev: Fighter, cur: Fighter, alpha: number, camYaw: number, sunYaw: number, dt: number): void {
@@ -32,7 +32,7 @@ export class FighterView {
     this.sprite.position.set(x, 0, laneZ(cur.lane));
     this.sprite.lift = y;
     this.sprite.groundY = 0;
-    this.sprite.flip = cur.facing < 0;
+    this.sprite.dir = dirFor(cur.facing);
     this.sprite.pose(cur.anim, (cur.animT + alpha) / TPS);
     this.sprite.update(0, camYaw, sunYaw);
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 4);
@@ -242,14 +242,9 @@ export class PreviewView {
       mat.color.set(0xffffff).lerp(TEAM_COLOR[f.team], 0.5).multiplyScalar(1.5);
       mat.opacity = tr.id === actingId ? 0.6 : 0.42;
       // show the frame the fighter will actually be in
-      const info = battleSheetFor(f.look).info;
-      const a = info.anims[pose.anim] ?? info.anims.idle;
-      let fr = Math.floor((pose.animT / TPS) * a.fps);
-      fr = a.loop ? fr % a.frames : Math.min(fr, a.frames - 1);
-      const tex = mat.map!;
-      tex.repeat.x = (pose.facing < 0 ? -1 : 1) / info.cols;
-      tex.offset.x = (fr + (pose.facing < 0 ? 1 : 0)) / info.cols;
-      tex.offset.y = 1 - (a.row + 1) / info.rows;
+      const sheet = battleSheetFor(f.look);
+      const fr = sheet.frame(pose.anim, pose.animT / TPS, dirFor(pose.facing));
+      sheet.aim(mat.map!, fr.col, fr.row);
     }
 
     // hit bursts
@@ -277,11 +272,7 @@ export class PreviewView {
     if (g) return g;
     const sheet = battleSheetFor(f.look);
     const tex = sheet.texture.clone();
-    const { cols, rows, frameW, frameH } = sheet.info;
-    tex.repeat.set(1 / cols, 1 / rows);
-    tex.offset.set(0, 1 - 1 / rows);
-    const geo = new THREE.PlaneGeometry(frameW / 16, frameH / 16);
-    geo.translate(0, frameH / 32 - 4 / 16, 0);
+    const geo = sheet.geometry();
     g = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.5, depthWrite: false, depthTest: false, fog: false }));
     g.renderOrder = 19;
     this.ghosts.set(f.id, g);
