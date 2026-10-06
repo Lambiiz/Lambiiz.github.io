@@ -1,4 +1,4 @@
-# Lumen Road (working title)
+# Octolion
 
 A 2.5D pixel-art RPG for the browser: an HD-2D (Octopath-style) overworld and a side-view battle
 system where time runs in real time, turns come from ATB gauges, and on your turn time stops and
