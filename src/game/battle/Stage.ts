@@ -94,10 +94,14 @@ export function buildStage(scene: THREE.Scene, lighting: Lighting): THREE.Group 
     const x = rng.range(-22, 22);
     kit.sprite(rng.pick(['bush', 'bush2']), L(x), Lz(-5 - rng.range(0, 1.5)), { sway: 0.25, flip: rng.chance(0.5) });
   }
-  // blurred foreground plants framing the bottom of the shot
-  for (let i = 0; i < 16; i++) {
-    const x = rng.range(-14, 14);
-    kit.sprite(rng.pick(['bush', 'bush2', 'tuft1', 'tuft2']), L(x), Lz(rng.range(5.5, 8)), { sway: 0.4, scale: rng.range(1.2, 2.0), flip: rng.chance(0.5) });
+  // blurred foreground plants framing the bottom corners; they never reach up over the fighting line
+  for (let i = 0; i < 14; i++) {
+    const side = i % 2 ? 1 : -1;
+    const x = side * rng.range(7, 15);
+    kit.sprite(rng.pick(['bush', 'bush2', 'tuft1', 'tuft2']), L(x), Lz(rng.range(7.5, 9.5)), { sway: 0.4, scale: rng.range(1.0, 1.5), flip: rng.chance(0.5) });
+  }
+  for (let i = 0; i < 18; i++) {
+    kit.sprite(rng.pick(['tuft0', 'tuft1', 'tuft2', 'flowersP']), L(rng.range(-12, 12)), Lz(rng.range(8, 10)), { sway: 0.5, scale: rng.range(1.0, 1.4), flip: rng.chance(0.5) });
   }
   group.add(new BillboardBatch(atlas, kit.billboards));
 

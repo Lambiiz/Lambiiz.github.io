@@ -3,7 +3,7 @@
  * first point where someone else gets to decide. Run with `npm test`.
  */
 import { createBattle } from '../src/game/battle/sim/encounters';
-import { decide, step, clone, fighter, jumpToApex, canUse } from '../src/game/battle/sim/sim';
+import { decide, step, clone, fighter, jumpToApex, canUse, SEPARATION } from '../src/game/battle/sim/sim';
 import { predict } from '../src/game/battle/sim/predict';
 import { think } from '../src/game/battle/sim/ai';
 import type { BattleState, Command } from '../src/game/battle/sim/types';
@@ -55,12 +55,23 @@ for (let seed = 1; seed <= 25; seed++) {
     // run reality forward until the first other decision, comparing every tick exactly
     const t0 = before.tick;
     const certain = Math.min(pred.certainUntil, pred.ticks);
-    const track = new Map(pred.fighters.map((p) => [p.id, new Map(p.points.map((q) => [q.tick, q]))]));
     while (s.tick - t0 < certain && s.awaiting === null && !s.outcome) {
       step(s);
+      const frame = pred.frames[s.tick - t0];
       for (const g of s.fighters) {
-        const q = track.get(g.id)!.get(s.tick - t0);
-        if (q && q.certain) check(q.x === g.x && q.y === g.y, `seed ${seed} tick ${s.tick}: fighter ${g.id} predicted (${q.x},${q.y}) got (${g.x},${g.y})`);
+        const q = frame.fighters.find((p) => p.id === g.id)!;
+        check(q.x === g.x && q.y === g.y && q.anim === g.anim, `seed ${seed} tick ${s.tick}: fighter ${g.id} predicted (${q.x},${q.y},${q.anim}) got (${g.x},${g.y},${g.anim})`);
+      }
+      for (const p of s.projectiles) {
+        const q = frame.projectiles.find((r) => r.id === p.id);
+        check(!!q && q.x === p.x && q.y === p.y, `seed ${seed} tick ${s.tick}: projectile ${p.id} mismatch`);
+      }
+    }
+    // soft collision: nobody standing inside anybody else
+    for (const a of s.fighters) {
+      for (const b of s.fighters) {
+        if (a.id >= b.id || a.ko || b.ko || Math.abs(a.y - b.y) > 0.5) continue;
+        check(Math.abs(a.x - b.x) > SEPARATION * 0.45, `seed ${seed} tick ${s.tick}: fighters ${a.id} and ${b.id} overlap (${Math.abs(a.x - b.x).toFixed(2)})`);
       }
     }
   }

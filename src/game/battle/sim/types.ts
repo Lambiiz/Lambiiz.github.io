@@ -36,6 +36,8 @@ export interface ActiveAction {
   t: number;
   /** Fighters already struck by this action's hitbox (melee hits once per target). */
   struck: number[];
+  /** Tick budget (moves give up when blocked). */
+  limit?: number;
 }
 
 export interface Fighter {
@@ -92,7 +94,7 @@ export interface Projectile {
 }
 
 export type BattleEvent =
-  | { tick: number; type: 'hit'; target: number; source: number; damage: number; x: number; y: number; guarded: boolean }
+  | { tick: number; type: 'hit'; target: number; source: number; damage: number; x: number; y: number; guarded: boolean; knock: number; dir: number }
   | { tick: number; type: 'ko'; target: number }
   | { tick: number; type: 'turn'; fighter: number }
   | { tick: number; type: 'spawn'; projectile: number; kind: Projectile['kind']; x: number; y: number }

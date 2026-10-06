@@ -25,6 +25,25 @@ export const FRAMES = {
 
 export const STUN_TICKS = 20;
 
+/**
+ * Where the turn gauge restarts after each command (0 = empty, 1 = full). Quick commands leave
+ * some gauge so the next turn comes sooner; heavy ones push it below zero. This is what makes the
+ * choice of action also a choice of when you act next.
+ */
+export const RECOVERY: Record<Command['kind'], number> = {
+  wait: 0.5,
+  move: 0.2,
+  jump: 0.15,
+  guard: 0.3,
+  slash: 0,
+  arrow: 0,
+  fireball: -0.2,
+};
+
+/** Fighters closer than this (centre to centre, while overlapping vertically) are pushed apart. */
+export const SEPARATION = 0.9;
+const PUSH = 0.3;
+
 // ---------------------------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------------------------
@@ -81,7 +100,7 @@ export function decide(s: BattleState, id: number, cmd: Command): boolean {
     f.action = { cmd: sanitize(f, cmd, s), t: 0, struck: [] };
     emit(s, { tick: s.tick, type: 'act', fighter: id, cmd: cmd.kind });
   }
-  f.atb = 0;
+  f.atb = RECOVERY[cmd.kind];
   s.awaiting = null;
   advanceQueue(s);
   return true;
@@ -159,6 +178,7 @@ export function step(s: BattleState): void {
     if (!f.ko && f.stun <= 0 && !f.action) setAnim(f, f.grounded ? 'idle' : f.vy > 0 ? 'jump' : 'fall');
     f.animT++;
   }
+  separate(s);
 
   // 4. projectiles
   for (const p of s.projectiles) {
@@ -187,6 +207,34 @@ export function step(s: BattleState): void {
   if (!s.outcome) advanceQueue(s);
 }
 
+/**
+ * Soft collision: overlapping fighters (friend or foe) are nudged apart a little every tick, so
+ * they can brush past and shove but never stand inside each other. Pairs are visited in array
+ * order, so the result is deterministic.
+ */
+function separate(s: BattleState): void {
+  const fs = s.fighters;
+  for (let i = 0; i < fs.length; i++) {
+    const a = fs[i];
+    if (a.ko) continue;
+    for (let j = i + 1; j < fs.length; j++) {
+      const b = fs[j];
+      if (b.ko) continue;
+      const dx = b.x - a.x;
+      const adx = Math.abs(dx);
+      if (adx >= SEPARATION || Math.abs(b.y - a.y) > 1.4) continue;
+      const dir = dx > 0 ? 1 : dx < 0 ? -1 : a.id < b.id ? 1 : -1;
+      const push = (SEPARATION - adx) * PUSH * 0.5;
+      a.x -= dir * push;
+      b.x += dir * push;
+    }
+  }
+  for (const f of fs) {
+    if (f.x < s.arena.left + f.hw) f.x = s.arena.left + f.hw;
+    if (f.x > s.arena.right - f.hw) f.x = s.arena.right - f.hw;
+  }
+}
+
 function overlapCircle(f: Fighter, x: number, y: number, r: number): boolean {
   const cx = clamp(x, f.x - f.hw, f.x + f.hw);
   const cy = clamp(y, f.y, f.y + f.h);
@@ -198,7 +246,7 @@ function hit(s: BattleState, f: Fighter, source: number, damage: number, knock: 
   const guarded = f.action?.cmd.kind === 'guard' && f.grounded && dir === -f.facing;
   const dmg = guarded ? Math.floor(damage * 0.3) : damage;
   f.hp = Math.max(0, f.hp - dmg);
-  emit(s, { tick: s.tick, type: 'hit', target: f.id, source, damage: dmg, x, y, guarded });
+  emit(s, { tick: s.tick, type: 'hit', target: f.id, source, damage: dmg, x, y, guarded, knock: guarded ? knock * 0.3 : knock, dir });
   if (guarded) {
     f.vx = dir * knock * 0.3;
     return;
@@ -235,8 +283,10 @@ function runAction(s: BattleState, f: Fighter, a: ActiveAction): void {
     case 'move': {
       if (!f.grounded) { done(); break; }
       const dx = c.x - f.x;
-      if (Math.abs(dx) <= PHYS.run * DT) {
-        f.x = c.x;
+      // give up when blocked: a run may take at most its unobstructed time plus a little
+      if (t === 0) a.limit = Math.ceil(Math.abs(dx) / (PHYS.run * DT)) + 10;
+      if (Math.abs(dx) <= PHYS.run * DT || t > (a.limit ?? 0)) {
+        if (Math.abs(dx) <= PHYS.run * DT) f.x = c.x;
         f.vx = 0;
         done();
         setAnim(f, 'idle');

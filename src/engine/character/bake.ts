@@ -40,6 +40,8 @@ export interface SheetInfo {
   footPx: number;
   /** Texels per world unit for this sheet. */
   ppu: number;
+  /** Head-and-shoulders crop of the first frame (turn-order chips, menus). */
+  portrait: PixelCanvas;
 }
 
 export interface SheetSpec {
@@ -212,7 +214,17 @@ export function bakeSheet(renderer: THREE.WebGLRenderer, look: CharacterLook, sp
   const footPx = Math.round((1 - (foot.y * 0.5 + 0.5)) * F);
 
   const pc = finish(col, dep, W, H, F, cols, faces, look);
-  return { canvas: pc, frameW: F, frameH: F, cols, rows, anims, dirs: spec.dirs.map((d) => d.name), rowsPerDir, footPx, ppu: spec.ppu };
+  // portrait: the head of the first frame
+  const f0 = faces[0]!;
+  const PW = 30, PH = 28;
+  const portrait = new PixelCanvas(PW, PH);
+  const px0 = Math.round(f0.cx - PW / 2), py0 = Math.round(f0.cy - PH / 2 - 1);
+  for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) {
+    const sx = px0 + x, sy = py0 + y;
+    if (sx < 0 || sy < 0 || sx >= F || sy >= F || pc.alpha(sx, sy) === 0) continue;
+    portrait.set(x, y, pc.get(sx, sy));
+  }
+  return { canvas: pc, frameW: F, frameH: F, cols, rows, anims, dirs: spec.dirs.map((d) => d.name), rowsPerDir, footPx, ppu: spec.ppu, portrait };
 }
 
 function disposeRig(rig: Rig): void {

@@ -5,7 +5,6 @@ import { PixelCanvas } from '../../engine/pixel/PixelCanvas';
 import { spriteTexture } from '../../engine/pixel/texture';
 import type { Fighter, Projectile } from './sim/types';
 import { TPS } from './sim/types';
-import type { Prediction } from './sim/predict';
 
 export function battleSheetFor(look: string): SheetTexture {
   return battleSheet(look);
@@ -21,9 +20,11 @@ export const laneZ = (lane: number) => lane * 0.6;
 export class FighterView {
   readonly sprite: Sprite3D;
   private flash = 0;
+  /** 0..1 extra glow (the fighter whose turn it is). */
+  highlight = 0;
 
   constructor(readonly id: number, look: string) {
-    this.sprite = new Sprite3D(battleSheetFor(look), { normalUp: 2.2, fill: 0.16, stretch: 1.02, blobSize: 1.1, blobOpacity: 0.45 });
+    this.sprite = new Sprite3D(battleSheetFor(look), { normalUp: 2.2, fill: 0.3, stretch: 1.02, blobSize: 1.1, blobOpacity: 0.45 });
   }
 
   sync(prev: Fighter, cur: Fighter, alpha: number, camYaw: number, sunYaw: number, dt: number): void {
@@ -37,11 +38,12 @@ export class FighterView {
     this.sprite.update(0, camYaw, sunYaw);
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 4);
     const m = this.sprite.mesh.material;
-    m.emissive.setRGB(0.16 + this.flash * 2.5, 0.15 + this.flash * 2.2, 0.14 + this.flash * 2.0);
+    const h = this.highlight * 0.35;
+    m.emissive.setRGB(0.3 + this.flash * 2.5 + h, 0.28 + this.flash * 2.2 + h * 0.85, 0.26 + this.flash * 2.0 + h * 0.4);
   }
 
-  hit(): void {
-    this.flash = 1;
+  hit(strength = 1): void {
+    this.flash = Math.max(this.flash, strength);
   }
 }
 
@@ -130,154 +132,68 @@ export class ProjectileView {
 }
 
 // ---------------------------------------------------------------------------------------------
-// preview overlay
+// markers: team rings under everyone, and the "it's your turn" marker
 // ---------------------------------------------------------------------------------------------
 
-const MAX_DOTS = 4000;
-
-function dotCanvas(): PixelCanvas {
-  const pc = new PixelCanvas(8, 8);
-  pc.ellipse(4, 4, 3.5, 3.5, 0xffffff);
-  return pc;
-}
-
-function burstCanvas(): PixelCanvas {
-  const pc = new PixelCanvas(24, 24);
-  const c = 12;
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + (i % 2) * 0.2;
-    const r = i % 2 ? 7 : 11;
-    pc.thickLine(c, c, c + Math.cos(a) * r, c + Math.sin(a) * r, i % 2 ? 0.9 : 1.4, 0xffffff);
+function ringCanvas(size: number, inner: number, outer: number): PixelCanvas {
+  const pc = new PixelCanvas(size, size);
+  const c = size / 2;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const d = Math.hypot(x + 0.5 - c, y + 0.5 - c);
+    if (d > inner && d < outer) pc.set(x, y, 0xffffff);
   }
-  pc.ellipse(c, c, 3.5, 3.5, 0xffffff);
   return pc;
 }
 
-export const TEAM_COLOR = { party: new THREE.Color(0.55, 0.85, 1.4), enemy: new THREE.Color(1.5, 0.45, 0.35) };
-const PROJ_COLOR: Record<string, THREE.Color> = {
-  'fireball:party': new THREE.Color(1.6, 0.8, 0.25),
-  'arrow:party': new THREE.Color(0.75, 1.4, 0.7),
-  'arrow:enemy': new THREE.Color(1.6, 0.35, 0.3),
-  'fireball:enemy': new THREE.Color(1.6, 0.35, 0.3),
-};
+function chevronCanvas(): PixelCanvas {
+  const pc = new PixelCanvas(13, 9);
+  for (let i = 0; i < 7; i++) {
+    for (let t = 0; t < 3; t++) {
+      pc.set(i, i + t - 0, 0xffffff);
+      pc.set(12 - i, i + t - 0, 0xffffff);
+    }
+  }
+  pc.outline(0.2);
+  return pc;
+}
 
-/**
- * Draws a Prediction: dotted paths for every fighter and projectile (bright while certain, dim once
- * another turn could change things), translucent afterimages where everyone ends up, and bursts
- * where hits land.
- */
-export class PreviewView {
-  readonly group = new THREE.Group();
-  private dots: THREE.InstancedMesh;
-  private ghosts = new Map<number, THREE.Mesh>();
-  private bursts: THREE.Mesh[] = [];
-  private burstTex = spriteTexture(burstCanvas());
+const TEAM_RING = { party: new THREE.Color(0.1, 0.55, 1.9), enemy: new THREE.Color(1.9, 0.18, 0.1) };
 
+/** A flat ring on the ground under a fighter, in its team's colour. */
+export class TeamRing {
+  readonly mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private static tex: THREE.Texture | null = null;
+  constructor(team: 'party' | 'enemy') {
+    TeamRing.tex ??= spriteTexture(ringCanvas(48, 18, 23));
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 1.25), new THREE.MeshBasicMaterial({ map: TeamRing.tex, transparent: true, depthWrite: false, color: TEAM_RING[team], opacity: 0.8, fog: false }));
+    this.mesh.rotation.x = -Math.PI / 2;
+    this.mesh.renderOrder = 1;
+  }
+}
+
+/** The acting fighter: a bright pulsing ring at the feet and a bobbing chevron overhead. */
+export class ActorMarker {
+  readonly ring: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  readonly chevron: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   constructor() {
-    const mat = new THREE.MeshBasicMaterial({ map: spriteTexture(dotCanvas()), transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
-    this.dots = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mat, MAX_DOTS);
-    this.dots.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_DOTS * 3), 3);
-    this.dots.count = 0;
-    this.dots.renderOrder = 20;
-    this.dots.frustumCulled = false;
-    this.group.add(this.dots);
+    this.ring = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.7), new THREE.MeshBasicMaterial({ map: spriteTexture(ringCanvas(64, 24, 31)), transparent: true, depthWrite: false, color: new THREE.Color(2.4, 1.9, 0.9), fog: false }));
+    this.ring.rotation.x = -Math.PI / 2;
+    this.ring.renderOrder = 2;
+    this.chevron = new THREE.Mesh(new THREE.PlaneGeometry(13 / 20, 9 / 20), new THREE.MeshBasicMaterial({ map: spriteTexture(chevronCanvas()), transparent: true, alphaTest: 0.5, depthTest: false, color: new THREE.Color(1.6, 1.3, 0.6), fog: false }));
+    this.chevron.renderOrder = 15;
+    this.hide();
   }
 
-  clear(): void {
-    this.dots.count = 0;
-    for (const g of this.ghosts.values()) g.visible = false;
-    for (const b of this.bursts) b.visible = false;
+  hide(): void {
+    this.ring.visible = this.chevron.visible = false;
   }
 
-  show(pred: Prediction, fighters: Fighter[], actingId: number, time: number): void {
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    let n = 0;
-    const put = (x: number, y: number, z: number, size: number, c: THREE.Color, k: number) => {
-      if (n >= MAX_DOTS) return;
-      m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(size, size, size));
-      this.dots.setMatrixAt(n, m);
-      this.dots.setColorAt(n, c.clone().multiplyScalar(k));
-      n++;
-    };
-    const byId = new Map(fighters.map((f) => [f.id, f]));
-    // a marching phase so the dots flow along the path, showing direction
-    const march = Math.floor(time * 30) % 4;
-    for (const tr of pred.fighters) {
-      const f = byId.get(tr.id)!;
-      const col = TEAM_COLOR[f.team];
-      const pts = tr.points;
-      // skip fighters that stay put
-      const moved = pts.some((p) => Math.abs(p.x - pts[0].x) > 0.05 || Math.abs(p.y - pts[0].y) > 0.05);
-      if (!moved) continue;
-      for (let i = 0; i < pts.length; i++) {
-        const p = pts[i];
-        if (i % 2) continue;
-        const pulse = (i / 2 + march) % 4 === 0 ? 1.25 : 1;
-        put(p.x, p.y + 1.05, 0.9, (p.certain ? 0.15 : 0.1) * pulse, col, p.certain ? (tr.id === actingId ? 0.9 : 0.6) : 0.22);
-      }
-    }
-    for (const tr of pred.projectiles) {
-      const col = PROJ_COLOR[`${tr.kind}:${tr.team}`] ?? TEAM_COLOR.enemy;
-      tr.points.forEach((p, i) => {
-        if (i % 2) return;
-        put(p.x, p.y, 0.9, p.certain ? 0.16 : 0.11, col, p.certain ? 0.85 : 0.22);
-      });
-    }
-    this.dots.count = n;
-    this.dots.instanceMatrix.needsUpdate = true;
-    if (this.dots.instanceColor) this.dots.instanceColor.needsUpdate = true;
-
-    // afterimages where each mover is when the preview stops being certain (or at the horizon)
-    for (const g of this.ghosts.values()) g.visible = false;
-    for (const tr of pred.fighters) {
-      const f = byId.get(tr.id)!;
-      const pose = tr.atCertain;
-      const dx = pose.x - tr.points[0].x, dy = pose.y - tr.points[0].y;
-      if (Math.abs(dx) < 0.3 && Math.abs(dy) < 0.3 && tr.id !== actingId) continue;
-      const g = this.ghost(f);
-      g.visible = true;
-      g.position.set(pose.x, pose.y, 0.6);
-      const mat = g.material as THREE.MeshBasicMaterial;
-      mat.color.set(0xffffff).lerp(TEAM_COLOR[f.team], 0.5).multiplyScalar(1.5);
-      mat.opacity = tr.id === actingId ? 0.6 : 0.42;
-      // show the frame the fighter will actually be in
-      const sheet = battleSheetFor(f.look);
-      const fr = sheet.frame(pose.anim, pose.animT / TPS, dirFor(pose.facing));
-      sheet.aim(mat.map!, fr.col, fr.row);
-    }
-
-    // hit bursts
-    pred.hits.forEach((h, i) => {
-      let b = this.bursts[i];
-      if (!b) {
-        b = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1), new THREE.MeshBasicMaterial({ map: this.burstTex, transparent: true, depthTest: false, blending: THREE.AdditiveBlending, fog: false }));
-        b.renderOrder = 21;
-        this.bursts.push(b);
-        this.group.add(b);
-      }
-      b.visible = true;
-      b.position.set(h.x, h.y, 1.0);
-      b.rotation.z = time * 2;
-      const k = h.certain ? 1 : 0.3;
-      (b.material as THREE.MeshBasicMaterial).color.setRGB(2 * k, (h.guarded ? 1.6 : 0.8) * k, 0.3 * k);
-      b.scale.setScalar(h.certain ? 1 + Math.sin(time * 10) * 0.12 : 0.7);
-    });
-    for (let i = pred.hits.length; i < this.bursts.length; i++) this.bursts[i].visible = false;
-  }
-
-  /** Translucent copy of a fighter's idle frame. */
-  private ghost(f: Fighter): THREE.Mesh {
-    let g = this.ghosts.get(f.id);
-    if (g) return g;
-    const sheet = battleSheetFor(f.look);
-    const tex = sheet.texture.clone();
-    const geo = sheet.geometry();
-    g = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.5, depthWrite: false, depthTest: false, fog: false }));
-    g.renderOrder = 19;
-    this.ghosts.set(f.id, g);
-    this.group.add(g);
-    return g;
+  show(x: number, y: number, z: number, time: number): void {
+    this.ring.visible = this.chevron.visible = true;
+    this.ring.position.set(x, 0.03, z);
+    const p = 1 + Math.sin(time * 6) * 0.08;
+    this.ring.scale.setScalar(p);
+    this.ring.rotation.z = time * 0.8;
+    this.chevron.position.set(x, y + 2.35 + Math.abs(Math.sin(time * 4)) * 0.18, z + 0.3);
   }
 }
-

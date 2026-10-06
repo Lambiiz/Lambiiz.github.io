@@ -8,10 +8,11 @@ import { Motes } from '../../engine/render/Motes';
 import { Sky } from '../../engine/render/Sky';
 import { cameraYaw } from '../../engine/render/globals';
 import { buildStage } from './Stage';
-import { FighterView, ProjectileView, PreviewView, laneZ } from './Views';
+import { FighterView, ProjectileView, TeamRing, ActorMarker, laneZ } from './Views';
+import { HoloPreview } from './Hologram';
 import { BattleUI, type MenuItem } from './BattleUI';
 import { createBattle } from './sim/encounters';
-import { decide, step, fighter, canUse, jumpToApex, ballistic, muzzle, PHYS, FRAMES } from './sim/sim';
+import { decide, step, fighter, canUse, jumpToApex, ballistic, muzzle, PHYS, FRAMES, RECOVERY } from './sim/sim';
 import { predict, type Prediction } from './sim/predict';
 import { think } from './sim/ai';
 import { DT, type BattleState, type Command, type Fighter, type Skill } from './sim/types';
@@ -25,7 +26,7 @@ const SKILL_INFO: Record<Skill | 'flee', { label: string; desc: string; aimed: b
   fireball: { label: 'Fireball', desc: `A bolt of flame flying straight at the aim point. ${FRAMES.fireball.damage} damage. Can be cast mid-air.`, aimed: true },
   arrow: { label: 'Arrow', desc: `An arcing shot that lands on the aim point. ${FRAMES.arrow.damage} damage.`, aimed: true },
   guard: { label: 'Guard', desc: 'Brace against attacks from the front. Takes 70% less damage.', aimed: false },
-  wait: { label: 'Wait', desc: 'Keep doing what you are doing.', aimed: false },
+  wait: { label: 'Wait', desc: 'Keep doing what you are doing. Your next turn comes quickly.', aimed: false },
   flee: { label: 'Flee', desc: 'Leave the battle (prototype).', aimed: false },
 };
 
@@ -47,7 +48,12 @@ export class Battle implements GameScene {
   private projViews = new Map<number, ProjectileView>();
   private prevF = new Map<number, { x: number; y: number }>();
   private prevP = new Map<number, { x: number; y: number }>();
-  private preview = new PreviewView();
+  private holo = new HoloPreview();
+  private rings = new Map<number, TeamRing>();
+  private marker = new ActorMarker();
+  /** Seconds of slow motion left (after an enemy commits to an action). */
+  private slowmo = 0;
+  private orderClock = 0;
   private pred: Prediction | null = null;
   private bui: BattleUI;
   private mode: Mode = 'run';
@@ -78,14 +84,24 @@ export class Battle implements GameScene {
       this.views.set(f.id, v);
       this.scene.add(v.sprite);
     }
-    this.overlay.add(this.preview.group);
+    for (const f of this.state.fighters) {
+      const r = new TeamRing(f.team);
+      this.rings.set(f.id, r);
+      this.scene.add(r.mesh);
+    }
+    this.scene.add(this.marker.ring);
+    this.overlay.add(this.holo.group, this.marker.chevron);
+    this.holo.onImpact = (x, y, z, text, certain) => {
+      const p = this.project(x, y, z);
+      this.bui.holoImpact(p.x, p.y, text, certain);
+    };
     this.scene.add(new Motes(140, new THREE.Box3(new THREE.Vector3(-14, 0.4, -8), new THREE.Vector3(14, 6, 5)), { color: 0xffe2a8, size: 6, intensity: 1.0 }));
     this.aimMarker = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.24, 20), new THREE.MeshBasicMaterial({ color: new THREE.Color(2, 1.8, 1.2), depthTest: false, transparent: true, fog: false }));
     this.aimMarker.renderOrder = 30;
     this.aimMarker.visible = false;
     this.overlay.add(this.aimMarker);
-    this.camera.position.set(0, 3.6, 17.5);
-    this.camera.lookAt(0, 1.55, 0);
+    this.camera.position.set(0, 3.8, 18);
+    this.camera.lookAt(0, 1.45, 0);
     this.bui = new BattleUI(document.body, this.state);
     this.bui.onPick = (i) => this.pick(i);
     this.bui.onHover = () => this.previewSelected();
@@ -150,8 +166,8 @@ export class Battle implements GameScene {
 
     // ---- input per mode ----
     if (this.mode === 'menu') {
-      if (input.hit('up')) { this.bui.moveSel(-1); this.previewSelected(); }
-      if (input.hit('down')) { this.bui.moveSel(1); this.previewSelected(); }
+      if (input.hit('up') || input.hit('left')) { this.bui.moveSel(-1); this.previewSelected(); }
+      if (input.hit('down') || input.hit('right')) { this.bui.moveSel(1); this.previewSelected(); }
       if (input.hit('confirm')) this.pick(this.bui.sel);
     } else if (this.mode === 'aim') {
       const m = input.move();
@@ -170,7 +186,9 @@ export class Battle implements GameScene {
     if (this.mode === 'run' && dt > 0) {
       if (this.hitStop > 0) this.hitStop -= dt;
       else {
-        this.acc += dt;
+        // a beat of slow motion after an enemy commits, so you see what it chose
+        this.slowmo = Math.max(0, this.slowmo - dt);
+        this.acc += this.slowmo > 0 ? dt * 0.3 : dt;
         let guard = 0;
         while (this.acc >= DT && guard++ < 8) {
           this.snapshot();
@@ -236,8 +254,10 @@ export class Battle implements GameScene {
         const cmd = think(s, f);
         if (!decide(s, f.id, cmd)) decide(s, f.id, { kind: 'wait' });
         else if (cmd.kind !== 'wait') {
-          const p = this.project(f.x, f.y + 2.7, laneZ(f.lane));
-          this.bui.callout(p.x, p.y, SKILL_INFO[cmd.kind].label);
+          const p = this.project(f.x, f.y + 2.6, laneZ(f.lane));
+          this.bui.callout(p.x, p.y, `${f.name}: ${SKILL_INFO[cmd.kind].label}`, 'enemy');
+          this.views.get(f.id)?.hit(0.5);
+          this.slowmo = 0.4;
         }
         continue;
       }
@@ -249,16 +269,19 @@ export class Battle implements GameScene {
   private openMenu(f: Fighter): void {
     this.mode = 'menu';
     this.acc = 0;
-    const items: MenuItem[] = (f.skills as (Skill | 'flee')[]).concat('flee').map((sk, i) => ({
-      skill: sk,
-      label: SKILL_INFO[sk].label,
-      key: `${i + 1}`,
-      desc: SKILL_INFO[sk].desc,
-      enabled: sk === 'flee' || canUse(f, this.defaultCommand(f, sk as Skill)),
-    }));
+    const items: MenuItem[] = (f.skills as (Skill | 'flee')[]).concat('flee').map((sk, i) => {
+      const next = sk === 'flee' ? 0 : (1 - RECOVERY[sk]) / f.atbRate;
+      return {
+        skill: sk,
+        label: SKILL_INFO[sk].label,
+        key: `${i + 1}`,
+        desc: SKILL_INFO[sk].desc + (sk === 'flee' ? '' : `<br><b>Next turn in ${next.toFixed(1)} s</b>`),
+        enabled: sk === 'flee' || canUse(f, this.defaultCommand(f, sk as Skill)),
+      };
+    });
     this.bui.showMenu(`${f.name}'s turn`, items);
     this.bui.setStopped(true);
-    this.bui.setHint('<kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Space</kbd> select — the preview shows exactly what happens until the next turn');
+    this.bui.setHint('<kbd>←</kbd><kbd>→</kbd> choose · <kbd>Space</kbd> select<br>The holograms replay exactly what will happen; grey = someone else may change it');
     this.previewSelected();
   }
 
@@ -315,7 +338,8 @@ export class Battle implements GameScene {
     const it = this.bui.items[this.bui.sel];
     if (!it || it.skill === 'flee') { this.setPrediction(null); return; }
     const f = this.actor;
-    this.setPrediction(predict(this.state, f.id, this.defaultCommand(f, it.skill)));
+    const cmd = this.defaultCommand(f, it.skill);
+    this.setPrediction(predict(this.state, f.id, cmd), cmd);
   }
 
   private pick(i: number): void {
@@ -352,7 +376,8 @@ export class Battle implements GameScene {
   private previewAim(): void {
     if (this.mode !== 'aim' || !this.aimSkill) return;
     const f = this.actor;
-    this.setPrediction(predict(this.state, f.id, this.commandFor(f, this.aimSkill, this.aim)));
+    const cmd = this.commandFor(f, this.aimSkill, this.aim);
+    this.setPrediction(predict(this.state, f.id, cmd), cmd);
   }
 
   private confirmAim(): void {
@@ -377,10 +402,14 @@ export class Battle implements GameScene {
     this.resolveTurns();
   }
 
-  private setPrediction(p: Prediction | null): void {
+  private setPrediction(p: Prediction | null, cmd?: Command): void {
     this.pred = p;
-    if (!p) this.preview.clear();
-    this.bui.showTimeline(p, this.state);
+    const s = this.state;
+    const actorId = s.awaiting;
+    this.holo.set(p, s.fighters, actorId ?? -1, this.time, { aimPath: this.mode === 'aim' });
+    this.bui.showOrder(s, p, cmd ? RECOVERY[cmd.kind] : null);
+    const label = this.mode === 'aim' && this.aimSkill ? SKILL_INFO[this.aimSkill].label : this.bui.items[this.bui.sel]?.label ?? '';
+    this.bui.showLog(p, actorId !== null ? fighter(s, actorId).name : '', label);
   }
 
   private finish(): void {
@@ -405,7 +434,7 @@ export class Battle implements GameScene {
   private consumeEvents(): void {
     for (const e of this.state.events) {
       if (e.type === 'hit') {
-        this.views.get(e.target)?.hit();
+        this.views.get(e.target)?.hit(1);
         const p = this.project(e.x, e.y + 0.4, 1);
         this.bui.damage(p.x, p.y, e.damage, e.guarded);
         this.hitStop = e.guarded ? 0.04 : 0.09;
@@ -425,16 +454,26 @@ export class Battle implements GameScene {
     this.camX += (THREE.MathUtils.clamp(target, -3, 3) - this.camX) * (1 - Math.exp(-2.5 * dt));
     this.shake = Math.max(0, this.shake - dt * 0.6);
     const sh = this.shake * this.shake * 6;
-    this.camera.position.set(this.camX + (Math.random() - 0.5) * sh, 4.6 + (Math.random() - 0.5) * sh, 21 - this.stopK * 0.9);
-    this.camera.lookAt(this.camX, 1.7, 0);
+    this.camera.position.set(this.camX + (Math.random() - 0.5) * sh, 3.8 + (Math.random() - 0.5) * sh, 18 - this.stopK * 0.7);
+    this.camera.lookAt(this.camX, 1.45, 0);
     this.camera.updateMatrixWorld();
 
     const camYaw = cameraYaw(this.camera);
     const sunYaw = this.lighting.sunYaw;
+    const choosing = this.mode === 'menu' || this.mode === 'aim';
     for (const f of s.fighters) {
       const prev = this.prevF.get(f.id) ?? f;
-      this.views.get(f.id)!.sync({ ...f, x: prev.x, y: prev.y }, f, alpha, camYaw, sunYaw, dt);
+      const v = this.views.get(f.id)!;
+      v.highlight = choosing && s.awaiting === f.id ? 0.5 + 0.5 * Math.sin(this.time * 6) : 0;
+      v.sync({ ...f, x: prev.x, y: prev.y }, f, alpha, camYaw, sunYaw, dt);
+      const r = this.rings.get(f.id)!.mesh;
+      r.position.set(v.sprite.position.x, 0.025, v.sprite.position.z);
+      r.visible = !f.ko;
     }
+    if (choosing && s.awaiting !== null) {
+      const a = this.views.get(s.awaiting)!.sprite;
+      this.marker.show(a.position.x, a.lift, a.position.z, this.time);
+    } else this.marker.hide();
     // projectiles
     const live = new Set<number>();
     for (const p of s.projectiles) {
@@ -452,11 +491,18 @@ export class Battle implements GameScene {
       if (!live.has(id)) { v.dispose(); this.projViews.delete(id); }
     }
     // preview
-    if (this.pred && (this.mode === 'menu' || this.mode === 'aim')) {
-      this.preview.show(this.pred, s.fighters, s.awaiting!, this.time);
+    if (this.pred && choosing) {
+      this.holo.update(this.time, s.fighters);
+      this.bui.setPlayhead(this.holo.playhead);
       this.bui.showPreviewDamage(this.pred, (x, y, z) => this.project(x, y, z));
     } else {
       this.bui.showPreviewDamage(null, (x, y, z) => this.project(x, y, z));
+      // keep the turn order live while time runs
+      this.orderClock -= dt;
+      if (this.orderClock <= 0) {
+        this.orderClock = 0.1;
+        this.bui.showOrder(s, null, null);
+      }
     }
     this.aimMarker.visible = this.mode === 'aim';
     if (this.mode === 'aim') {
@@ -466,7 +512,7 @@ export class Battle implements GameScene {
     this.lighting.update(dt, this.time, new THREE.Vector3(this.camX, 0, 0));
     this.bui.update(s, (x, y, z) => this.project(x, y, z), (f) => {
       const v = this.views.get(f.id)!;
-      return v.sprite.position.x;
+      return { x: v.sprite.position.x, z: v.sprite.position.z };
     });
   }
 

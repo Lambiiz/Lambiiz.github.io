@@ -1,15 +1,10 @@
-import { clone, decide, step } from './sim';
+import { clone, decide, step, RECOVERY } from './sim';
 import type { Anim, BattleEvent, BattleState, Command } from './types';
+import { TPS } from './types';
 
-export interface TrackPoint {
-  tick: number;
-  x: number;
-  y: number;
-  /** False once another fighter's turn has come up: their choice could change things from here. */
-  certain: boolean;
-}
-
-export interface PoseSnap {
+/** One fighter at one tick of the prediction. */
+export interface FighterFrame {
+  id: number;
   x: number;
   y: number;
   anim: Anim;
@@ -18,91 +13,129 @@ export interface PoseSnap {
   ko: boolean;
 }
 
-const snap = (f: { x: number; y: number; anim: Anim; animT: number; facing: 1 | -1; ko: boolean }): PoseSnap => ({ x: f.x, y: f.y, anim: f.anim, animT: f.animT, facing: f.facing, ko: f.ko });
+export interface ProjectileFrame {
+  id: number;
+  kind: 'arrow' | 'fireball';
+  team: 'party' | 'enemy';
+  owner: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
+/** Everything the preview needs to replay one tick. */
+export interface PredFrame {
+  tick: number;
+  fighters: FighterFrame[];
+  projectiles: ProjectileFrame[];
+}
+
+export type PredEvent =
+  | (Extract<BattleEvent, { type: 'hit' }> & { certain: boolean })
+  | (Extract<BattleEvent, { type: 'ko' }> & { certain: boolean })
+  | (Extract<BattleEvent, { type: 'spawn' }> & { certain: boolean; owner: number })
+  | { tick: number; type: 'turn'; fighter: number; certain: boolean };
 
 export interface Prediction {
   /** Ticks simulated. */
   ticks: number;
-  /** First tick at which someone else gets to decide (∞ if nobody does within the horizon). */
+  /** First tick at which anyone gets to decide again (∞ if nobody does within the horizon). */
   certainUntil: number;
-  fighters: { id: number; points: TrackPoint[]; end: PoseSnap; atCertain: PoseSnap }[];
-  projectiles: { id: number; kind: string; team: string; points: TrackPoint[] }[];
-  hits: (Extract<BattleEvent, { type: 'hit' }> & { certain: boolean })[];
-  kos: (Extract<BattleEvent, { type: 'ko' }> & { certain: boolean })[];
-  /** Upcoming turns in order: who, and when. */
+  /** frames[0] is the moment of decision; frames[i] is i ticks later. */
+  frames: PredFrame[];
+  events: PredEvent[];
+  /** Upcoming turns in order (inside the horizon). */
   turns: { fighter: number; tick: number }[];
+  /** When the deciding fighter acts again, in ticks from now (projected past the horizon). */
+  actorNext: number;
+}
+
+function snapshot(s: BattleState, tick: number): PredFrame {
+  return {
+    tick,
+    fighters: s.fighters.map((f) => ({ id: f.id, x: f.x, y: f.y, anim: f.anim, animT: f.animT, facing: f.facing, ko: f.ko })),
+    projectiles: s.projectiles.map((p) => ({ id: p.id, kind: p.kind, team: p.team, owner: p.owner, x: p.x, y: p.y, vx: p.vx, vy: p.vy })),
+  };
 }
 
 /**
  * Exact preview: run the real simulation forward on a copy of the state with `cmd` applied for the
- * awaiting fighter. Future choices (the enemies', and your own on later turns) are unknown, so when
- * a turn comes up inside the horizon that fighter keeps doing what it was doing ('wait'), and
- * everything after the first such turn is flagged uncertain. Up to that point it is exactly what
- * will happen.
+ * awaiting fighter, recording every tick. Future choices (the enemies', and your own on later
+ * turns) are unknown, so when a turn comes up inside the horizon that fighter keeps doing what it
+ * was doing ('wait'), and everything after the first such turn is flagged uncertain. Up to that
+ * point it is exactly what will happen.
  */
-export function predict(state: BattleState, id: number, cmd: Command, horizon = 150, sampleEvery = 2): Prediction | null {
+export function predict(state: BattleState, id: number, cmd: Command, horizon = 150): Prediction | null {
   const s = clone(state);
   s.events = [];
   if (!decide(s, id, cmd)) return null;
   const t0 = s.tick;
-  const out: Prediction = { ticks: horizon, certainUntil: Infinity, fighters: [], projectiles: [], hits: [], kos: [], turns: [] };
-  const ftrack = new Map<number, TrackPoint[]>();
-  const ptrack = new Map<number, { id: number; kind: string; team: string; points: TrackPoint[] }>();
-  for (const f of s.fighters) ftrack.set(f.id, [{ tick: 0, x: f.x, y: f.y, certain: true }]);
-  const atCertain = new Map<number, PoseSnap>();
+  const out: Prediction = { ticks: horizon, certainUntil: Infinity, frames: [snapshot(s, 0)], events: [], turns: [], actorNext: Infinity };
+  const actor = s.fighters.find((f) => f.id === id)!;
+  for (const e of s.events) if (e.type === 'spawn') out.events.push({ ...e, tick: 0, certain: true, owner: id });
+  s.events = [];
 
   for (let i = 1; i <= horizon; i++) {
-    // auto-resolve every turn inside the preview with 'wait'
     let guard = 0;
     while (s.awaiting !== null && guard++ < 16) {
       const who = s.awaiting;
-      if (!atCertain.size) for (const f of s.fighters) atCertain.set(f.id, snap(f));
-      out.turns.push({ fighter: who, tick: s.tick - t0 });
-      out.certainUntil = Math.min(out.certainUntil, s.tick - t0);
+      const rel = s.tick - t0;
+      out.turns.push({ fighter: who, tick: rel });
+      out.events.push({ tick: rel, type: 'turn', fighter: who, certain: rel <= out.certainUntil });
+      out.certainUntil = Math.min(out.certainUntil, rel);
+      if (who === id && out.actorNext === Infinity) out.actorNext = rel;
       decide(s, who, { kind: 'wait' });
     }
     step(s);
     const rel = s.tick - t0;
     const certain = rel <= out.certainUntil;
     for (const e of s.events) {
-      if (e.type === 'hit') out.hits.push({ ...e, tick: e.tick - t0, certain });
-      if (e.type === 'ko') out.kos.push({ ...e, tick: e.tick - t0, certain });
+      if (e.type === 'hit') out.events.push({ ...e, tick: rel, certain });
+      else if (e.type === 'ko') out.events.push({ ...e, tick: rel, certain });
+      else if (e.type === 'spawn') {
+        const p = s.projectiles.find((q) => q.id === e.projectile);
+        out.events.push({ ...e, tick: rel, certain, owner: p?.owner ?? -1 });
+      }
     }
     s.events = [];
-    if (i % sampleEvery === 0 || i === horizon) {
-      for (const f of s.fighters) ftrack.get(f.id)!.push({ tick: rel, x: f.x, y: f.y, certain });
+    out.frames.push(snapshot(s, rel));
+    if (s.outcome) {
+      out.ticks = i;
+      break;
     }
-    for (const p of s.projectiles) {
-      let t = ptrack.get(p.id);
-      if (!t) ptrack.set(p.id, (t = { id: p.id, kind: p.kind, team: p.team, points: [] }));
-      t.points.push({ tick: rel, x: p.x, y: p.y, certain });
-    }
-    if (s.outcome) break;
   }
-  // projectiles that already existed get their current position as the first point
-  for (const p of state.projectiles) {
-    const t = ptrack.get(p.id);
-    if (t) t.points.unshift({ tick: 0, x: p.x, y: p.y, certain: true });
+  if (out.actorNext === Infinity && !actor.ko) {
+    // past the horizon: extrapolate from the gauge
+    out.actorNext = out.frames.length - 1 + Math.ceil(((1 - actor.atb) / actor.atbRate) * TPS);
   }
-  for (const f of s.fighters) {
-    out.fighters.push({ id: f.id, points: ftrack.get(f.id)!, end: snap(f), atCertain: atCertain.get(f.id) ?? snap(f) });
-  }
-  out.projectiles = [...ptrack.values()];
   return out;
 }
 
-/** When will each fighter's gauge fill if nothing changes? (ticks from now; for the turn-order bar) */
-export function turnOrder(state: BattleState, count = 6): { fighter: number; tick: number }[] {
-  const res: { fighter: number; tick: number }[] = [];
-  const atb = new Map(state.fighters.map((f) => [f.id, f.atb]));
+/** The gauge value a command leaves (for the turn-order display). */
+export function recoveryOf(cmd: Command): number {
+  return RECOVERY[cmd.kind];
+}
+
+/**
+ * When each fighter's gauge will fill if nothing changes (ticks from now). The awaiting fighter's
+ * gauge is assumed to restart at `actorRestart`.
+ */
+export function turnOrder(state: BattleState, count = 8, actorRestart = 0): { fighter: number; tick: number; now?: boolean }[] {
+  const res: { fighter: number; tick: number; now?: boolean }[] = [];
   for (const f of state.fighters) {
     if (f.ko) continue;
-    let a = atb.get(f.id)!;
-    if (state.awaiting === f.id) a = 0;
-    for (let k = 0; k < 3; k++) {
-      const ticks = Math.ceil(((1 - a) / f.atbRate) * 60) + k * Math.ceil((1 / f.atbRate) * 60);
-      res.push({ fighter: f.id, tick: ticks });
+    let a = f.atb;
+    if (state.awaiting === f.id) {
+      res.push({ fighter: f.id, tick: 0, now: true });
+      a = actorRestart;
+    } else if (state.turnQueue.includes(f.id)) {
+      res.push({ fighter: f.id, tick: 0 });
+      a = 0;
     }
+    const first = Math.ceil(((1 - a) / f.atbRate) * TPS);
+    const period = Math.ceil((1 / f.atbRate) * TPS);
+    for (let k = 0; k < 3; k++) res.push({ fighter: f.id, tick: first + k * period });
   }
   return res.sort((a, b) => a.tick - b.tick || a.fighter - b.fighter).slice(0, count);
 }
