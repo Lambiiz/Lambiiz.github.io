@@ -194,7 +194,7 @@ export class BipedAnimator implements Animator {
       case 'torch':
       case 'lantern':
         Object.assign(Lf, { swing: 0.15, raise: 0.12, elbow: 1.25, twist: -0.2 });
-        s.offhand.pitch = o === 'torch' ? 0.95 : 0.0;
+        s.offhand.pitch = o === 'torch' ? 0.25 : 0.0;
         break;
       case 'book':
         Object.assign(Lf, { swing: 0.25, raise: 0.05, elbow: 1.55, twist: 0.9 });
@@ -281,8 +281,10 @@ export class BipedAnimator implements Animator {
       pose.setWorld(B.fore[i], r.fore);
       pose.setWorld(B.hand[i], r.hand);
     }
-    pose.setLocal(B.weapon, rig.weaponGrip.rotated(R(s.weapon)));
-    pose.setLocal(B.offhand, rig.offhandGrip.rotated(R(s.offhand)));
+    // held items: pitch > 0 tips the blade from the thumb direction back towards the arm
+    const held = (r: Rot) => Mat3.rotY(r.yaw).mul(Mat3.rotZ(r.pitch)).mul(Mat3.rotX(r.roll));
+    pose.setLocal(B.weapon, rig.weaponGrip.rotated(held(s.weapon)));
+    pose.setLocal(B.offhand, rig.offhandGrip.rotated(held(s.offhand)));
     pose.solve();
     if (!s.showArrow) for (const gi of this.arrowGroups(pose)) pose.hide.add(gi);
 
@@ -347,6 +349,10 @@ export class BipedAnimator implements Animator {
 
   private setArmsSwing(s: BipedState, u: number, amp: number, elbow: number, elbowGain: number, raise: number, bias = 0): void {
     const c = Math.cos(TAU * u);
+    if (this.rig.traits.armsForward) {
+      this.zombieArms(s, u);
+      return;
+    }
     for (let i = 0; i < 2; i++) {
       const side = SIDES[i];
       const a = s.arms[i];
@@ -358,6 +364,16 @@ export class BipedAnimator implements Animator {
         continue;
       }
       a.angles = { ...a.angles, swing: sw, raise, elbow: elbow + Math.max(0, sw) * elbowGain, twist: 0.1, flex: 0, roll: 0 };
+    }
+  }
+
+  /** Undead reach: both arms held out in front, swaying a little. */
+  private zombieArms(s: BipedState, u: number): void {
+    const w = Math.sin(TAU * u);
+    for (let i = 0; i < 2; i++) {
+      const side = SIDES[i];
+      if ((side > 0 && this.rig.weapon !== 'none' && this.rig.weapon !== 'bow') || (side < 0 && this.rig.offhand !== 'none')) continue;
+      s.arms[i].angles = { swing: 1.35 + 0.08 * w * side, raise: 0.18, twist: 0.3, elbow: 0.25, flex: -0.3, roll: 0 };
     }
   }
 
@@ -384,11 +400,11 @@ export class BipedAnimator implements Animator {
         break;
       case 'spear':
         R.angles = { swing: 0.35, raise: 0.2, twist: -0.2, elbow: 1.2 + b, flex: 0, roll: 0 };
-        s.weapon.pitch = -0.25;
+        s.weapon.pitch = -0.6;
         break;
       case 'staff':
         R.angles = { swing: 0.35, raise: 0.18, twist: 0.1, elbow: 1.2 + b, flex: 0, roll: 0 };
-        s.weapon.pitch = 0.45;
+        s.weapon.pitch = 0.3;
         break;
       case 'none':
         // fists up
@@ -397,7 +413,7 @@ export class BipedAnimator implements Animator {
         break;
       default:
         R.angles = { swing: 0.5, raise: 0.22, twist: 0.1, elbow: 1.25 + b, flex: 0, roll: 0 };
-        s.weapon.pitch = 0.55;
+        s.weapon.pitch = -0.35;
     }
     if (w !== 'bow' && w !== 'none') {
       if (o === 'shield' || o === 'buckler') {
@@ -430,6 +446,7 @@ export class BipedAnimator implements Animator {
     const L = this.L;
     this.posture(s);
     this.breathe(s, u);
+    if (this.rig.traits.armsForward) this.zombieArms(s, u);
     // a slow weight shift onto the left leg and back
     const w = Math.sin(TAU * u);
     s.root = s.root.add(new Vec3(0, 0, -L * 0.03 * w));

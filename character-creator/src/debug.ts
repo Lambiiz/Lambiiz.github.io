@@ -57,8 +57,13 @@ export function debugView(root: HTMLElement, q: URLSearchParams): void {
   const renderer = new Renderer();
   const t0 = performance.now();
   let frames = 0;
+  const jobs: [number, string | undefined][] = [];
   for (const seed of seeds) {
-    const g = newGenome(fam, seed, q.get('arch') ?? undefined);
+    if (q.get('arch') === 'all') for (const a of fam.archetypes) jobs.push([seed, a.id]);
+    else jobs.push([seed, q.get('arch') ?? undefined]);
+  }
+  for (const [seed, arch] of jobs) {
+    const g = newGenome(fam, seed, arch);
     const model = buildModel(fam, g, scale);
     if (clipId === 'all') {
       allClips(root, renderer, model, elev, dirs[0], zoom, bg);

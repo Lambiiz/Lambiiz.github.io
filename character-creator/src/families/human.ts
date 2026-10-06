@@ -417,6 +417,8 @@ function build(g: Genes, _genome: Genome, scale: number): BuiltParts {
 /** Materials shared by humans and humanoid families (slot names used by humanBody.ts). */
 export function humanMaterials(g: Genes, skinHex?: Hex): Record<string, Material> {
   const skin = skinHex ?? skinColor(g.f('skinTone'), g.f('undertone'));
+  const has = (id: string) => g.schema.has(id);
+  const apronColor = has('apronColor') ? g.col('apronColor') : 0xd6ccb4;
   const hair = g.col('hairColor');
   const metal = METAL_HEX[g.c('metal')] ?? METAL_HEX.steel;
   const lip = adjust(mixHex(skin, 0xb04a4a, 0.25), -0.06);
@@ -436,7 +438,7 @@ export function humanMaterials(g: Genes, skinHex?: Hex): Record<string, Material
     leather: { color: g.col('leatherColor'), ramp: 'leather', style: 'leather' },
     cape: cloth(g.col('capeColor')),
     hat: g.c('headwear') === 'strawhat' ? { color: g.col('hatColor'), ramp: 'wood', style: 'knit' } : g.c('headwear') === 'beanie' ? { color: g.col('hatColor'), ramp: 'cloth', style: 'knit' } : cloth(g.col('hatColor')),
-    apron: g.c('top') === 'none' && g.b('apron') ? { color: g.col('apronColor'), ramp: 'leather', style: 'leather' } : cloth(g.col('apronColor')),
+    apron: g.c('top') === 'none' && has('apron') && g.b('apron') ? { color: apronColor, ramp: 'leather', style: 'leather' } : cloth(apronColor),
     metal: { color: metal, ramp: g.c('metal') === 'gold' || g.c('metal') === 'bronze' ? 'gold' : 'metal', style: 'metal' },
     mail: { color: adjust(metal, -0.05), ramp: 'metal', style: 'chain' },
     gold: { color: g.c('metal') === 'silver' ? 0xd0d6de : 0xd8aa40, ramp: g.c('metal') === 'silver' ? 'metal' : 'gold', style: 'metal' },

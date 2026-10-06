@@ -51,6 +51,8 @@ export interface BodySpec {
   /** No mouth / brow features (masked faces, skeletons). */
   noFace?: boolean;
   skin?: string;
+  /** 0..1: thinner limbs and torso (skeletons, gaunt undead). */
+  thin?: number;
   /** Body parts fully hidden by clothing: their skin is not built (no poke-through at joints). */
   covered?: Set<'torso' | 'pelvis' | 'upper' | 'fore' | 'hand' | 'thigh' | 'shin' | 'foot'>;
 }
@@ -82,6 +84,7 @@ const inflateBy = (body: HumanBody, k: number) => Math.max(0.55, body.h * k);
 export function buildHumanBody(b: AnatomyBuilder, spec: BodySpec, skel: Parameters<typeof buildBipedSkeleton>[2]): HumanBody {
   const H = spec.H;
   const h = H / spec.heads;
+  const thin = lerp(1, 0.55, spec.thin ?? 0), thinT = lerp(1, 0.78, spec.thin ?? 0);
   const Bc = H - h; // chin height
   const mF = lerp(0.84, 1.42, spec.mass);
   const fr = spec.frame;
@@ -124,9 +127,9 @@ export function buildHumanBody(b: AnatomyBuilder, spec: BodySpec, skel: Paramete
   const cov = spec.covered ?? new Set();
 
   // ---- torso
-  const pelvis: Shell = { bone: B.pelvis, center: new Vec3(-0.05 * h, -0.02 * h, 0), radii: new Vec3(0.5 * h * Math.pow(mF, 0.8), 0.5 * h, lerp(0.6, 0.78, fr) * h * Math.pow(mF, 0.7)) };
-  const waist: Shell = { bone: B.spine, center: new Vec3(spec.belly * 0.12 * h, 0.05 * h, 0), radii: new Vec3(0.42 * h * mF * (1 + 0.32 * spec.belly), 0.62 * h, lerp(0.54, 0.48, fr) * h * mF * (1 + 0.18 * spec.belly)) };
-  const chest: Shell = { bone: B.chest, center: new Vec3(0, 0.02 * h, 0), radii: new Vec3(0.5 * h * Math.pow(mF, 0.8) * (1 + 0.06 * spec.muscle), 0.7 * h, lerp(0.7, 0.6, fr) * h * Math.pow(mF, 0.7) * (1 + 0.1 * spec.muscle)) };
+  const pelvis: Shell = { bone: B.pelvis, center: new Vec3(-0.05 * h, -0.02 * h, 0), radii: new Vec3(0.5 * h * Math.pow(mF, 0.8) * thinT, 0.5 * h, lerp(0.6, 0.78, fr) * h * Math.pow(mF, 0.7) * thinT) };
+  const waist: Shell = { bone: B.spine, center: new Vec3(spec.belly * 0.12 * h, 0.05 * h, 0), radii: new Vec3(0.42 * h * mF * (1 + 0.32 * spec.belly) * thinT * thinT, 0.62 * h, lerp(0.54, 0.48, fr) * h * mF * (1 + 0.18 * spec.belly) * thinT * thinT) };
+  const chest: Shell = { bone: B.chest, center: new Vec3(0, 0.02 * h, 0), radii: new Vec3(0.5 * h * Math.pow(mF, 0.8) * (1 + 0.06 * spec.muscle) * thinT, 0.7 * h, lerp(0.7, 0.6, fr) * h * Math.pow(mF, 0.7) * (1 + 0.1 * spec.muscle) * thinT) };
   const girdle: Shell = { bone: B.chest, center: new Vec3(-0.06 * h, d.shoulder.y - 0.02 * h, 0), radii: new Vec3(0.36 * h * (1 + 0.15 * spec.muscle), 0.2 * h, d.shoulder.z * 0.95 + 0.06 * h) };
   if (!cov.has('pelvis')) b.ellipsoid(body, pelvis.bone, pelvis.center, pelvis.radii, skin, { ...bodyO, tag: 'pelvis' });
   if (!cov.has('torso')) for (const s of [waist, chest, girdle]) b.ellipsoid(body, s.bone, s.center, s.radii, skin, { ...bodyO, tag: 'torso' });
@@ -190,6 +193,7 @@ export function buildHumanBody(b: AnatomyBuilder, spec: BodySpec, skel: Paramete
     hand: 0.125 * h,
     neck: rNeck,
   };
+  if (thin !== 1) for (const k of Object.keys(r) as (keyof typeof r)[]) r[k] *= k === 'hand' || k === 'neck' ? lerp(1, thin, 0.6) : thin;
   const arm: number[] = [], leg: number[] = [];
   for (let i = 0; i < 2; i++) {
     const side = SIDES[i];

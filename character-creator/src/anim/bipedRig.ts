@@ -85,6 +85,8 @@ export interface BipedTraits {
   digitigrade: boolean;
   /** Feminine/masculine hip sway 0..1 (only a nuance of the walk). */
   sway: number;
+  /** Shambling undead: arms held forward. */
+  armsForward?: boolean;
 }
 
 export interface BipedRig {
@@ -193,7 +195,7 @@ export function gripXform(d: BipedDims): Xform {
  * Builds the bones of a biped in its rest pose. `sideOut` slightly opens the rest arms so they do
  * not sink into wide hips.
  */
-export function buildBipedSkeleton(b: AnatomyBuilder, d: BipedDims, opts: { tail?: number; hairChain?: { origin: Vec3; seg: number; count: number }; cape?: boolean; skirt?: boolean; quiver?: boolean }): BipedBones {
+export function buildBipedSkeleton(b: AnatomyBuilder, d: BipedDims, opts: { tail?: { count: number; seg: number; pitch: number; curl: number }; hairChain?: { origin: Vec3; seg: number; count: number }; cape?: boolean; skirt?: boolean; quiver?: boolean }): BipedBones {
   const root = b.bone('root', -1, Xform.I);
   const pelvis = b.bone('pelvis', root, Xform.at(0, d.hipY, 0, Mat3.rotZ(-d.hunch * 0.4)));
   const spine = b.bone('spine', pelvis, Xform.at(0, d.spineY, 0, Mat3.rotZ(-d.hunch * 0.3)));
@@ -240,10 +242,11 @@ export function buildBipedSkeleton(b: AnatomyBuilder, d: BipedDims, opts: { tail
   }
   const tail: number[] = [];
   if (opts.tail) {
+    // the tail leaves the pelvis backwards (bone X axis along the tail), tilted by `pitch`, curling by `curl` per segment
+    const t = opts.tail;
     let parent = pelvis;
-    const seg = opts.tail;
-    for (let i = 0; i < seg; i++) {
-      const bi = b.bone('tail' + i, parent, i === 0 ? Xform.at(-d.torsoDepth * 0.8, -d.h * 0.1, 0, Mat3.rotZ(Math.PI * 0.62)) : Xform.at(d.h * 0.55, 0, 0, Mat3.rotZ(-0.12)));
+    for (let i = 0; i < t.count; i++) {
+      const bi = b.bone('tail' + i, parent, i === 0 ? Xform.at(-d.torsoDepth * 0.85, -d.h * 0.12, 0, Mat3.rotZ(Math.PI - t.pitch)) : Xform.at(t.seg, 0, 0, Mat3.rotZ(-t.curl)));
       tail.push(bi);
       parent = bi;
     }
