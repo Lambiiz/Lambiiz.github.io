@@ -9,7 +9,7 @@ import { Domain } from '../anatomy/anatomy';
 import { hash01 } from '../core/rng';
 import { PI, frac, lerp, smoothstep } from '../core/math';
 
-export type PatternKind = 'none' | 'stripes' | 'spots' | 'rosettes' | 'saddle' | 'dorsal' | 'mottled' | 'bands' | 'blotches' | 'piebald';
+export type PatternKind = 'none' | 'stripes' | 'spots' | 'rosettes' | 'saddle' | 'dorsal' | 'mottled' | 'bands' | 'blotches' | 'piebald' | 'diamonds' | 'zigzag' | 'rings';
 
 export interface SurfaceSpec {
   pattern: PatternKind;
@@ -136,6 +136,23 @@ export function evaluateSurface(s: SurfaceSpec, sp: SurfacePoint, slot: number, 
     case 'blotches': {
       const n = fbm(s.seed, u * 0.35, v * 0.35);
       return n > lerp(0.68, 0.52, dens) ? s.markSlot : slot;
+    }
+    case 'diamonds': {
+      // a chain of diamonds down the back (rattlesnakes, vipers)
+      if (absT > PI * 0.75) return slot;
+      const g = Math.abs(frac(u * 0.3) - 0.5) * 2;
+      return g + absT / (PI * 0.62) < lerp(0.6, 0.95, dens) ? s.markSlot : slot;
+    }
+    case 'zigzag': {
+      const tri = 4 * Math.abs(frac(u * 0.35) - 0.5) - 1;
+      return Math.abs(sp.theta - tri * PI * 0.28) < PI * lerp(0.09, 0.18, dens) ? s.markSlot : slot;
+    }
+    case 'rings': {
+      // coral-snake triads: mark, second colour (the tip slot), mark, then the coat
+      const f = frac(u * 0.28);
+      const w = lerp(0.1, 0.16, dens);
+      if (f < w || (f >= w * 2 && f < w * 3)) return s.markSlot;
+      return f < w * 2 && s.tipSlot >= 0 ? s.tipSlot : slot;
     }
     case 'piebald': {
       const n = fbm(s.seed, u * 0.25, v * 0.25 + sp.theta);
