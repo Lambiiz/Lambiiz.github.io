@@ -1,8 +1,11 @@
 import { defineConfig } from 'vite';
 
-// The game is served from the root of lambiiz.github.io, so base stays '/'.
+// Source lives in src/ (src/index.html is the dev entry). `npm run build` writes dist/ and then
+// tools/publish.mjs copies it to the repository root, so GitHub Pages can serve the game straight
+// from the branch with no build step on GitHub. Relative base: works at any URL path.
 export default defineConfig({
-  base: '/',
+  root: 'src',
+  base: './',
   server: { host: '127.0.0.1', port: 5173 },
-  build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
+  build: { target: 'es2022', outDir: '../dist', emptyOutDir: true, chunkSizeWarningLimit: 1500 },
 });

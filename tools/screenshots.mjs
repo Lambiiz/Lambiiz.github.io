@@ -13,7 +13,7 @@ const page = await browser.newPage({ viewport: { width: Number(w), height: Numbe
 const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
-await page.goto(`http://127.0.0.1:5173${path}`);
+await page.goto(`${process.env.BASE ?? 'http://127.0.0.1:5173'}${path}`);
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 60000 }).catch(() => logs.push('[timeout] __ready'));
 // optional scripted actions, |-separated: "key:KeyW:1500|wait:500|eval:window.__game.x()"
 for (const a of actions.split('|').filter(Boolean)) {

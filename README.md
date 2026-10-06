@@ -4,15 +4,28 @@ A 2.5D pixel-art RPG for the browser: an HD-2D (Octopath-style) overworld and a 
 system where time runs in real time, turns come from ATB gauges, and on your turn time stops and
 an **exact preview** shows what will happen.
 
+**Play:** https://lambiiz.github.io/ (desktop browser, keyboard + mouse). Nothing to install.
+
 Built with three.js, TypeScript and Vite. Every texture, sprite and character is drawn by code at
 runtime: the repository has no image files.
 
+## How it is published
+
+GitHub Pages serves the repository root as a static site. `index.html` and `assets/` at the root
+are the **built** game (generated, don't edit), so the page works without any build step on
+GitHub. The source is in `src/`.
+
+To change the game (on any computer with Node.js, or in a Claude Code cloud session):
+
 ```bash
 npm install
-npm run dev        # http://127.0.0.1:5173/
+npm run dev        # live-reloading dev server at http://127.0.0.1:5173/
 npm test           # battle-sim determinism tests
-npm run build      # typecheck + production build → dist/
+npm run build      # typecheck + build + copy the result to the repo root — commit it
 ```
+
+The `Build` GitHub Action re-runs the tests and the build on every push to `main` and commits the
+result if someone forgot, so the published game is never stale.
 
 Useful URLs while developing:
 
@@ -38,18 +51,13 @@ walking off the east end of the low road enters the Wilds.
 (Move, Jump, Fireball, Arrow): aim with the mouse or WASD, click / Space to confirm, Esc /
 right-click to go back.
 
-## Deploying
-
-`.github/workflows/deploy.yml` builds and publishes to GitHub Pages on every push to `main`. In the
-repository settings set **Pages → Build and deployment → Source** to **GitHub Actions** once.
-
 ---
 
 ## Architecture
 
 ```
 src/
-  main.ts                 entry: the game, or ?view=sprites
+  index.html, main.ts     dev entry: the game, or ?view=sprites
   engine/                 reusable, game-agnostic
     core/                 Input, CameraRig (diorama follow camera), seeded Rng + noise
     pixel/                PixelCanvas (software pixel surface with height + emissive channels)
