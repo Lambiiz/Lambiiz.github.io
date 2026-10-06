@@ -145,7 +145,3 @@ and time runs again. 'Wait' keeps the current action, so you can let a jump or a
 - Touch / gamepad aiming in battle (gamepad works in the overworld).
 - Art is a procedural placeholder: the rig produces good silhouettes, and hand-tuned per-character
   details would be the next step.
-
-The [Lumina](https://gitlab.com/stubborn-hug/lumina) project was a reference for techniques
-(tilt-shift depth of field, sun-facing shadow proxies for billboards). It has no license, so none of
-its code is used here.
