@@ -70,9 +70,12 @@ export class ThumbGrid {
       g.clearRect(0, 0, t.canvas.width, t.canvas.height);
       const m = t.cache.model.anatomy.metrics;
       const size = Math.max(m.height, m.length * 0.8, 10);
-      const z = Math.max(1, Math.floor(Math.min((t.canvas.width * 0.9) / size, (t.canvas.height * 0.82) / size)));
       const box = t.cache.box;
-      const px = Math.round(t.canvas.width / 2 - box.ox * z), py = Math.round(t.canvas.height * 0.5 + m.height * z * 0.45 - box.oy * z);
+      const fitCell = Math.min(t.canvas.width / box.w, t.canvas.height / box.h);
+      const z = Math.max(1, Math.floor(Math.min((t.canvas.width * 0.9) / size, (t.canvas.height * 0.82) / size, Math.max(1, fitCell))));
+      let gy = t.canvas.height * 0.5 + m.height * z * 0.45;
+      if (box.h * z <= t.canvas.height) gy = Math.min(Math.max(gy, box.oy * z), t.canvas.height - (box.h - box.oy) * z);
+      const px = Math.round(t.canvas.width / 2 - box.ox * z), py = Math.round(gy - box.oy * z);
       g.drawImage(spr, px, py, spr.width * z, spr.height * z);
     }
   }

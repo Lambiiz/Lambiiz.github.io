@@ -9,3 +9,7 @@
 - Battle rules in `src/game/battle/sim/` must stay pure and deterministic (see README).
 - Headless screenshots: `npm run dev` in the background, then `node tools/screenshots.mjs`.
   Software rendering is ~1 fps, so allow long waits; `window.__game` has debug hooks.
+- `character-creator/` is a separate, standalone project (the Pixel Creature Creator, served at
+  `/character-creator/`) with its own `package.json`. Its source is `character-creator/src`; run
+  `npm run build` inside that folder (it regenerates `character-creator/index.html` + `assets/`,
+  commit them with the source) and `npm test` there. It shares nothing with the game.

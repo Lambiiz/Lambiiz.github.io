@@ -230,7 +230,7 @@ function build(g: Genes, genome: { archetype: string }, scale: number): BuiltPar
       lid = b.bone('lid', shape, Xform.at(R * 0.44, R * 0.16, 0));
       b.ellipsoid(b.group('lid', 0), lid, Vec3.ZERO, new Vec3(re * 1.14, re * 1.14, re * 1.14), 'primary', { ...bo, clips: [{ n: new Vec3(0, -1, 0), d: 0 }] });
       const gbeam = b.group('beam', 0, { depthBias: 3, flags: GF.NoContour | GF.NoFarShade });
-      b.cone(gbeam, eyeball, new Vec3(re * 1.05, 0, 0), re * 0.32, eyeball, new Vec3(R * 7, 0, 0), re * 0.7, 'beam', { flags: PF.Emissive | PF.NoShadow | PF.NoPattern | PF.NoOutline });
+      b.cone(gbeam, eyeball, new Vec3(re * 1.05, 0, 0), re * 0.32, eyeball, new Vec3(R * 4.5, 0, 0), re * 0.65, 'beam', { flags: PF.Emissive | PF.NoShadow | PF.NoPattern | PF.NoOutline });
       beam = gbeam;
       const nStalk = Number(g.c('stalks')) || 0;
       if (nStalk) {

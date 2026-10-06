@@ -265,7 +265,7 @@ function build(g: Genes, genome: { archetype: string }, scale: number): BuiltPar
       if (feet === 'hoof') b.ellipsoid(gl, footB, new Vec3(len[2] + r2 * 0.1, 0, 0), new Vec3(r2 * 1.0, r2 * 1.15, r2 * 1.1), 'hoof', { ...lo, flags: PF.NoPattern | PF.ShadowCaster });
       else if (feet === 'claw') b.ellipsoid(gl, footB, new Vec3(len[2] * 0.5, -r2 * 0.4, 0), new Vec3(len[2] * 0.75, r2 * 0.55, r2 * 1.1), 'primary', { ...lo, u0: 0.9, u1: 1, flags: PF.ShadowCaster });
       else b.ellipsoid(gl, footB, new Vec3(len[2] + r2 * 0.3, -r2 * 0.1, 0), new Vec3(r2 * 1.25, r2 * 0.8, r2 * 1.05), 'primary', { ...lo, u0: 0.95, u1: 1, flags: PF.ShadowCaster });
-      legs.push({ side, front, anchor, hip, bones: [upper, lower, footB], len, restToe: toe, meta });
+      legs.push({ side, front, anchor, hip, bones: [upper, lower, footB], len, restToe: toe, hipW, meta });
     }
   }
 

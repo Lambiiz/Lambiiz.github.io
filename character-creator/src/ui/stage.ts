@@ -10,8 +10,10 @@ import type { ClipDef } from '../model/types';
 import { backgroundTile, type BackgroundId } from './backgrounds';
 import { SpriteCache, type ViewOptions } from './sprites';
 
-const ACTION_KEYS: Record<string, string> = {
-  Space: 'attack', KeyF: 'cast', KeyJ: 'jump', KeyH: 'hurt', KeyK: 'die', KeyX: 'sit', KeyV: 'wave', KeyB: 'cheer', KeyE: 'pickup', KeyT: 'talk', KeyG: 'block', KeyR: 'ready',
+/** Action keys, each with fallbacks so every family answers with its closest clip. */
+const ACTION_KEYS: Record<string, string[]> = {
+  Space: ['attack'], KeyF: ['cast', 'fly', 'glide'], KeyJ: ['jump'], KeyH: ['hurt'], KeyK: ['die'], KeyX: ['sit', 'rest', 'coil', 'sleep'],
+  KeyV: ['wave', 'call', 'rear'], KeyB: ['cheer', 'call'], KeyE: ['pickup', 'eat'], KeyT: ['talk', 'call'], KeyG: ['block', 'rear'], KeyR: ['ready', 'rear'],
 };
 
 export class Stage {
@@ -94,7 +96,10 @@ export class Stage {
     const m = this.model.anatomy.metrics;
     const size = Math.max(m.height, m.length * 0.8, 12);
     const w = this.canvas.width / this.dpr, h = this.canvas.height / this.dpr;
-    return clamp(Math.floor(Math.min((w * 0.55) / size, (h * 0.62) / size)), 1, 16);
+    // …but never so close that a flying or leaping clip leaves the stage
+    const box = this.cache.box;
+    const fitCell = Math.min((w * 0.95) / box.w, (h * 0.95) / box.h);
+    return clamp(Math.floor(Math.min((w * 0.55) / size, (h * 0.62) / size, Math.max(1, fitCell))), 1, 16);
   }
 
   private key(e: KeyboardEvent, down: boolean): void {
@@ -110,8 +115,8 @@ export class Stage {
     }
     if (down && ACTION_KEYS[e.code] && !e.repeat) {
       e.preventDefault();
-      const id = ACTION_KEYS[e.code];
-      if (this.model?.animator.clips.some((c) => c.id === id)) {
+      const id = ACTION_KEYS[e.code].find((c) => this.model?.animator.clips.some((k) => k.id === c));
+      if (id) {
         this.action = id;
         this.actionStarted = true;
       }
@@ -151,7 +156,10 @@ export class Stage {
         const diff = (a: number) => Math.abs(Math.atan2(Math.sin(a - yaw), Math.cos(a - yaw)));
         this.dir = DIRECTIONS.reduce((best, d, i) => (diff(d.yaw) < diff(DIRECTIONS[best].yaw) ? i : best), 0);
         dirYaw = DIRECTIONS[this.dir].yaw;
-        if (!this.action) id = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 'run' : this.keys.has('KeyC') ? 'sneak' : 'walk';
+        if (!this.action) {
+          id = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 'run' : this.keys.has('KeyC') ? 'sneak' : 'walk';
+          if (!model.animator.clips.some((c) => c.id === id)) id = 'walk';
+        }
       }
       if (this.actionStarted) {
         this.actionStarted = false;
@@ -200,7 +208,11 @@ export class Stage {
     // background tiles, snapped to the logical pixel grid
     const tile = backgroundTile(this.bg);
     const ts = tile.width * z;
-    const cx = Math.round(W / 2 / z) * z, cy = Math.round((H / 2 + model.anatomy.metrics.height * z * 0.45) / z) * z;
+    // ground origin a little below the centre, moved so that the whole cell stays on the stage
+    let cyRaw = H / 2 + model.anatomy.metrics.height * z * 0.45;
+    const above = cache.box.oy * z, below = (cache.box.h - cache.box.oy) * z;
+    if (above + below <= H) cyRaw = clamp(cyRaw, above, H - below);
+    const cx = Math.round(W / 2 / z) * z, cy = Math.round(cyRaw / z) * z;
     const ox = (((Math.round(this.groundX) * z + cx) % ts) + ts) % ts;
     const oy = (((Math.round(this.groundY) * z + cy) % ts) + ts) % ts;
     for (let y = oy - ts; y < H; y += ts) for (let x = ox - ts; x < W; x += ts) ctx.drawImage(tile, x, y, ts, ts);

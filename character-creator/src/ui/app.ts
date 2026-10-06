@@ -333,7 +333,7 @@ export class App {
       bgSel.value = this.view.bg;
       this.stage.bg = this.view.bg;
     };
-    const driveHelp = h('div', { class: 'drive-help' }, 'WASD / arrows move · Shift run · C sneak · Space attack · F cast · G block · J jump · H hurt · K die · X sit · V wave · B cheer · E pick up · T talk · R ready');
+    const driveHelp = h('div', { class: 'drive-help' }, 'WASD / arrows move · Shift run · C sneak · Space attack · F cast / fly · G block · J jump · H hurt · K die · X sit / rest · V wave / call · B cheer · E pick up / eat · T talk · R ready');
     const right = h('aside', { class: 'panel right' },
       h('h3', {}, 'Animation'),
       this.clipBar,

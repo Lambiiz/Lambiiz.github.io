@@ -376,7 +376,7 @@ function build(g: Genes, genome: { archetype: string }, scale: number): BuiltPar
     traits: { energy: g.f('energy'), hopper: p.hopper, ground: !!p.ground, attack: p.attack, call: p.call, bob: g.f('bob') },
   };
   const animator = new FlyerAnimator(rig);
-  const height = bat ? S * 1.4 : legLen + bh * 0.9 + neckLen * 0.8 + hr * 1.8;
+  const height = bat ? S * 2.2 + Wsp * 0.4 + S : legLen + bh * 0.9 + neckLen * 0.8 + hr * 1.8;
   const anatomy = b.build({ height, walkSpeed: animator.clips.find((c) => c.id === 'walk')!.speed, runSpeed: animator.clips.find((c) => c.id === 'run')!.speed, length: bat ? Wsp * 1.4 : bl + tl * 0.5 + hr }, rig, clamp(S / 12, 0.6, 2));
 
   // ---- materials

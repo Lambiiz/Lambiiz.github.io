@@ -91,7 +91,9 @@ export class FlyerAnimator implements Animator {
       return new Vec3(h.x + d.S * 0.04, 0, l.side * Math.max(Math.abs(h.z) * 0.85, 0.8));
     });
     this.flyH = rig.bat ? d.S * 2.2 + d.W * 0.4 : Math.max(this.standY * 1.6, d.S * 1.3) + d.W * 0.5;
-    this.stride = { walk: t.hopper ? d.S * 0.75 : d.S * 0.9, fly: d.S * 3.2 };
+    // walkers never stride further than their legs reach
+    const legSpan = rig.bones.legs.length ? rig.bones.legs[0].len[0] + rig.bones.legs[0].len[1] : d.S;
+    this.stride = { walk: t.hopper ? d.S * 0.75 : Math.min(d.S * 0.9, legSpan * 1.25), fly: d.S * 3.2 };
     const def = (id: string, label: string, frames: number, fps: number, loop: boolean, stride = 0): ClipDef =>
       ({ id, label, frames, fps, loop, speed: stride ? Math.round((stride / (frames / fps)) * 10) / 10 : 0 });
     const e = lerp(0.85, 1.2, t.energy);

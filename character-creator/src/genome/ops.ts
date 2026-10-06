@@ -148,7 +148,7 @@ const b64urlDecode = (s: string): Uint8Array => {
 
 /** Compact share code (URL-safe): the genome as JSON, deflated when the browser supports it. */
 export async function genomeToCode(g: Genome): Promise<string> {
-  const json = genomeToJSON(g).replace(/\s+/g, '');
+  const json = JSON.stringify(JSON.parse(genomeToJSON(g)));
   const bytes = new TextEncoder().encode(json);
   if (typeof CompressionStream !== 'undefined') {
     const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));

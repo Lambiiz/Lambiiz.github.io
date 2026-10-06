@@ -19,8 +19,9 @@ export interface QLeg {
   hip: Vec3;
   bones: [number, number, number];
   len: [number, number, number];
-  /** Toe contact in the rest pose (creature space). */
+  /** Toe contact and hip in the rest pose (creature space). */
   restToe: Vec3;
+  hipW: Vec3;
   /** Rest angle of the last segment from the vertical, leaning back (radians). */
   meta: number;
 }
@@ -91,6 +92,17 @@ export class QuadrupedAnimator implements Animator {
       trot: { stride: L * 1.9, duty: 0.48, lift: L * 0.24, offsets: [0.5, 0, 0, 0.5] },
       run: { stride: L * 3.2 * lerp(0.9, 1.1, e), duty: 0.34, lift: L * 0.3, offsets: [0.48, 0.58, 0, 0.1] },
     };
+    // never stride further than every planted foot can be reached (the body may sink 12%)
+    for (const g of [this.g.walk, this.g.trot, this.g.run]) {
+      for (const leg of rig.legs) {
+        const reach = (leg.len[0] + leg.len[1]) * 0.97;
+        const ankle = leg.restToe.addScaled(new Vec3(-Math.sin(leg.meta), Math.cos(leg.meta), 0), leg.len[2]);
+        const dy = leg.hipW.y * 0.88 - ankle.y, dz = leg.hipW.z - ankle.z;
+        const dxMax = Math.sqrt(Math.max(0, reach * reach - dy * dy - dz * dz));
+        const half = Math.max(L * 0.15, dxMax - Math.abs(leg.hipW.x - ankle.x));
+        g.stride = Math.min(g.stride, (2 * half) / g.duty);
+      }
+    }
     const def = (id: string, label: string, frames: number, fps: number, loop: boolean, stride = 0): ClipDef =>
       ({ id, label, frames, fps, loop, speed: stride ? Math.round((stride / (frames / fps)) * 10) / 10 : 0 });
     const t = rig.traits;
@@ -136,25 +148,7 @@ export class QuadrupedAnimator implements Animator {
     // the whole body hangs off the pelvis: move it, rotating about the body centre
     const centre = new Vec3(d.BL * 0.5, 0, 0);
     const pR = R(s.pelvis);
-    let shift = s.root.add(centre).sub(pR.apply(centre));
-    if (s.autoHeight) {
-      // lower the body when a planted leg could not reach its foot
-      const rest = pose.anatomy.restWorld;
-      const pelvisRest = rest[B.pelvis];
-      const pw = new Xform(pelvisRest.basis.mul(pR), pelvisRest.origin.add(shift));
-      let drop = 0;
-      for (let i = 0; i < this.rig.legs.length; i++) {
-        const leg = this.rig.legs[i], t = s.legs[i];
-        if (!t.planted) continue;
-        const hip = pw.point(pelvisRest.inverseRigid().mul(rest[leg.anchor]).point(leg.hip));
-        const ankle = t.toe.addScaled(this.metaDir(leg, t.fold, pR), leg.len[2]);
-        const L = (leg.len[0] + leg.len[1]) * 0.99;
-        const dx = hip.x - ankle.x, dz = hip.z - ankle.z;
-        const maxDy = Math.sqrt(Math.max(0, L * L - dx * dx - dz * dz));
-        if (hip.y - ankle.y > maxDy) drop = Math.max(drop, hip.y - ankle.y - maxDy);
-      }
-      shift = shift.add(new Vec3(0, -drop, 0));
-    }
+    const shift = s.root.add(centre).sub(pR.apply(centre));
     pose.translate(B.pelvis, shift);
     pose.rotate(B.pelvis, R(s.pelvis));
     pose.rotate(B.spine, R(s.spine));
@@ -175,6 +169,24 @@ export class QuadrupedAnimator implements Animator {
     });
     pose.solve();
     const pr = pose.world[B.pelvis].basis;
+    if (s.autoHeight) {
+      // lower the body when a planted leg cannot reach its foot (measured on the posed torso)
+      let drop = 0;
+      for (let i = 0; i < this.rig.legs.length; i++) {
+        const leg = this.rig.legs[i], t = s.legs[i];
+        if (!t.planted) continue;
+        const hip = pose.world[leg.anchor].point(leg.hip);
+        const ankle = t.toe.addScaled(this.metaDir(leg, t.fold, pr), leg.len[2]);
+        const L = (leg.len[0] + leg.len[1]) * 0.985;
+        const dx = hip.x - ankle.x, dz = hip.z - ankle.z;
+        const maxDy = Math.sqrt(Math.max(0, L * L - dx * dx - dz * dz));
+        if (hip.y - ankle.y > maxDy) drop = Math.max(drop, hip.y - ankle.y - maxDy);
+      }
+      if (drop > 0) {
+        pose.translate(B.pelvis, new Vec3(0, -drop, 0));
+        pose.solve();
+      }
+    }
     for (let i = 0; i < this.rig.legs.length; i++) {
       const leg = this.rig.legs[i], t = s.legs[i];
       const anchor = pose.world[leg.anchor];
