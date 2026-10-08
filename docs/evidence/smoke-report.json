@@ -1,0 +1,547 @@
+{
+  "url": "http://127.0.0.1:5173/?dev",
+  "startedAt": "2026-10-08T11:22:02.593Z",
+  "checks": [
+    {
+      "name": "WebGL2 context available",
+      "ok": true,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "name": "Start button begins COMBAT with one Memory Needle and five empty sockets",
+      "ok": true
+    },
+    {
+      "name": "Normal-time combat advances simulation and weapons fire",
+      "ok": true,
+      "simTime": 9.62,
+      "shots": 4,
+      "enemies": 0
+    },
+    {
+      "name": "Draft freezes enemies, projectiles, spawn progress, charge and damage over 3 s wall-clock",
+      "ok": true,
+      "enemiesFrozen": 4,
+      "tick": 592
+    },
+    {
+      "name": "Boundary lands exactly on the trial duration",
+      "ok": true,
+      "trialTime": 30
+    },
+    {
+      "name": "First draft offers three distinct weapon cards",
+      "ok": true,
+      "offer": [
+        "thread",
+        "light",
+        "needle"
+      ]
+    },
+    {
+      "name": "Invalid drop returns the card without consuming the reward",
+      "ok": true,
+      "stage": "placing"
+    },
+    {
+      "name": "Pointer cancellation returns the dragged card unconsumed",
+      "ok": true
+    },
+    {
+      "name": "Click-select + click-socket equips; double click cannot duplicate",
+      "ok": true,
+      "stage": "settling"
+    },
+    {
+      "name": "Continue is locked while the card settles",
+      "ok": true
+    },
+    {
+      "name": "Continue resumes the same encounter at the next trial exactly once",
+      "ok": true,
+      "trialIndex": 1
+    },
+    {
+      "name": "Survivors and residual charge are preserved across the draft",
+      "ok": true,
+      "survivors": 4,
+      "residual": 0.233
+    },
+    {
+      "name": "Manual pause freezes the encounter",
+      "ok": true
+    },
+    {
+      "name": "Visibility loss suspends without catch-up and requires Resume",
+      "ok": true
+    },
+    {
+      "name": "Dropping onto an occupied socket asks for Replace and keeps the old weapon",
+      "ok": true
+    },
+    {
+      "name": "Cancel replacement preserves the old card and returns to the unresolved choice",
+      "ok": true
+    },
+    {
+      "name": "Drag-to-empty-socket equips through the physical card",
+      "ok": true
+    },
+    {
+      "name": "Two complete combat/draft cycles completed through real input",
+      "ok": true
+    },
+    {
+      "name": "Restart from a pending draft resets health, phase, build and trial",
+      "ok": true
+    },
+    {
+      "name": "Dragging a boon onto a socket never creates or occupies a weapon (fixture: seed search)",
+      "ok": true,
+      "boon": "mend"
+    },
+    {
+      "name": "Use resolves the boon immediately and enables Continue",
+      "ok": true,
+      "hp": 80,
+      "polish": 0
+    },
+    {
+      "name": "A boon offer was reachable",
+      "ok": true
+    },
+    {
+      "name": "Full-Base replacement is atomic: exactly six weapons, new instance at zero charge",
+      "ok": true
+    },
+    {
+      "name": "Pause with a projectile in flight freezes its position (fixture)",
+      "ok": true
+    },
+    {
+      "name": "Edge arrival deals contact damage once and defeat triggers once",
+      "ok": true
+    },
+    {
+      "name": "Restart from defeat yields a fresh run",
+      "ok": true
+    },
+    {
+      "name": "Trial 8 clears without new spawns and ends in VICTORY (fixture)",
+      "ok": true,
+      "phase": "VICTORY"
+    },
+    {
+      "name": "Restart from victory yields a fresh run",
+      "ok": true
+    },
+    {
+      "name": "Ten restarts reach a stable resource plateau with one loop",
+      "ok": true,
+      "first": {
+        "geometries": 79,
+        "textures": 39,
+        "programs": 35,
+        "calls": 111,
+        "triangles": 58856,
+        "listeners": 5,
+        "voices": 0,
+        "cards": 1,
+        "enemyVisuals": 0,
+        "effects": {
+          "ribbons": 0,
+          "rings": 0,
+          "particles": 20,
+          "shards": 9,
+          "dropped": 0
+        },
+        "loops": 1,
+        "sceneChildren": 8
+      },
+      "last": {
+        "geometries": 79,
+        "textures": 39,
+        "programs": 36,
+        "calls": 71,
+        "triangles": 45906,
+        "listeners": 5,
+        "voices": 0,
+        "cards": 1,
+        "enemyVisuals": 0,
+        "effects": {
+          "ribbons": 0,
+          "rings": 0,
+          "particles": 0,
+          "shards": 0,
+          "dropped": 0
+        },
+        "loops": 1,
+        "sceneChildren": 8
+      }
+    },
+    {
+      "name": "1280x720: equipped card face ≥ ~70x80 CSS px and all sockets on screen",
+      "ok": true,
+      "face": {
+        "w": 72.7,
+        "h": 81.4
+      }
+    },
+    {
+      "name": "1280x720: tray and sockets are clear of the draft panel and HUD",
+      "ok": true,
+      "panelLeft": 936
+    },
+    {
+      "name": "Low quality toggles without breaking the draft",
+      "ok": true
+    },
+    {
+      "name": "1366x768: equipped card face ≥ ~70x80 CSS px and all sockets on screen",
+      "ok": true,
+      "face": {
+        "w": 77.6,
+        "h": 87.5
+      }
+    },
+    {
+      "name": "1366x768: tray and sockets are clear of the draft panel and HUD",
+      "ok": true,
+      "panelLeft": 1022
+    },
+    {
+      "name": "1920x1080: equipped card face ≥ ~70x80 CSS px and all sockets on screen",
+      "ok": true,
+      "face": {
+        "w": 114,
+        "h": 128.3
+      }
+    },
+    {
+      "name": "1920x1080: tray and sockets are clear of the draft panel and HUD",
+      "ok": true,
+      "panelLeft": 1576
+    },
+    {
+      "name": "Charge fixture holds six independent fills at 0/.25/.5/.75/.95/1",
+      "ok": true
+    },
+    {
+      "name": "Each card owns its own charge material/uniform",
+      "ok": true,
+      "values": [
+        0,
+        0.25,
+        0.5,
+        0.75,
+        0.95,
+        1
+      ],
+      "distinctMaterials": 6,
+      "distinctUniformObjects": 6
+    },
+    {
+      "name": "Stress fixture (6 weapons, 80 enemies) keeps HUD input responsive and effects bounded (software GPU)",
+      "ok": true,
+      "perf": {
+        "frames": 7,
+        "simSecondsPerWallSecond": 0.035,
+        "avgMs": 2247.53,
+        "p95Ms": 5766.5,
+        "maxMs": 5766.5,
+        "updateMs": 3.78,
+        "renderSubmitMs": 774.25,
+        "dpr": 1,
+        "quality": "high",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        }
+      },
+      "calls": 115,
+      "triangles": 211596,
+      "effects": {
+        "ribbons": 0,
+        "rings": 0,
+        "particles": 0,
+        "shards": 0,
+        "dropped": 0
+      },
+      "pauseLatencyMs": 4755
+    },
+    {
+      "name": "No page errors or shader errors in the console",
+      "ok": true,
+      "sample": []
+    }
+  ],
+  "console": [],
+  "screenshots": [
+    "docs/screenshots/01-title.png",
+    "docs/screenshots/02-initial-combat.png",
+    "docs/screenshots/03-draft-choices.png",
+    "docs/screenshots/04-replace-preview.png",
+    "docs/screenshots/05-six-slots-draft.png",
+    "docs/screenshots/06-six-slots-combat.png",
+    "docs/screenshots/07-attack-lance.png",
+    "docs/screenshots/07-attack-thread.png",
+    "docs/screenshots/07-attack-bell.png",
+    "docs/screenshots/07-attack-needle.png",
+    "docs/screenshots/08-defeat.png",
+    "docs/screenshots/09-victory.png",
+    "docs/screenshots/10-combat-1280x720.png",
+    "docs/screenshots/11-draft-1280x720.png",
+    "docs/screenshots/12-draft-low-quality-1280x720.png",
+    "docs/screenshots/10-combat-1366x768.png",
+    "docs/screenshots/11-draft-1366x768.png",
+    "docs/screenshots/10-combat-1920x1080.png",
+    "docs/screenshots/11-draft-1920x1080.png",
+    "docs/screenshots/13-charge-fixture-high.png",
+    "docs/screenshots/14-charge-fixture-bloom-off.png",
+    "docs/screenshots/15-stress-1920x1080.png"
+  ],
+  "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+  "consoleErrorsMain": 0,
+  "restartSeries": [
+    {
+      "geometries": 79,
+      "textures": 39,
+      "programs": 35,
+      "calls": 111,
+      "triangles": 58856,
+      "listeners": 5,
+      "voices": 0,
+      "cards": 1,
+      "enemyVisuals": 0,
+      "effects": {
+        "ribbons": 0,
+        "rings": 0,
+        "particles": 20,
+        "shards": 9,
+        "dropped": 0
+      },
+      "loops": 1,
+      "sceneChildren": 8
+    },
+    {
+      "geometries": 79,
+      "textures": 39,
+      "programs": 35,
+      "calls": 111,
+      "triangles": 58856,
+      "listeners": 5,
+      "voices": 0,
+      "cards": 1,
+      "enemyVisuals": 0,
+      "effects": {
+        "ribbons": 0,
+        "rings": 0,
+        "particles": 20,
+        "shards": 9,
+        "dropped": 0
+      },
+      "loops": 1,
+      "sceneChildren": 8
+    },
+    {
+      "geometries": 79,
+      "textures": 39,
+      "programs": 36,
+      "calls": 71,
+      "triangles": 45906,
+      "listeners": 5,
+      "voices": 0,
+      "cards": 1,
+      "enemyVisuals": 0,
+      "effects": {
+        "ribbons": 0,
+        "rings": 0,
+        "particles": 0,
+        "shards": 0,
+        "dropped": 0
+      },
+      "loops": 1,
+      "sceneChildren": 8
+    },
+    {
+      "geometries": 79,
+      "textures": 39,
+      "programs": 36,
+      "calls": 71,
+      "triangles": 45906,
+      "listeners": 5,
+      "voices": 0,
+      "cards": 1,
+      "enemyVisuals": 0,
+      "effects": {
+        "ribbons": 0,
+        "rings": 0,
+        "particles": 0,
+        "shards": 0,
+        "dropped": 0
+      },
+      "loops": 1,
+      "sceneChildren": 8
+    },
+    {
+      "geometries": 79,
+      "textures": 39,
+      "programs": 36,
+      "calls": 71,
+      "triangles": 45906,
+      "listeners": 5,
+      "voices": 0,
+      "cards": 1,
+      "enemyVisuals": 0,
+      "effects": {
+        "ribbons": 0,
+        "rings": 0,
+        "particles": 0,
+        "shards": 0,
+        "dropped": 0
+      },
+      "loops": 1,
+      "sceneChildren": 8
+    },
+    {
+      "geometries": 79,
+      "textures": 39,
+      "programs": 36,
+      "calls": 71,
+      "triangles": 45906,
+      "listeners": 5,
+      "voices": 0,
+      "cards": 1,
+      "enemyVisuals": 0,
+      "effects": {
+        "ribbons": 0,
+        "rings": 0,
+        "particles": 0,
+        "shards": 0,
+        "dropped": 0
+      },
+      "loops": 1,
+      "sceneChildren": 8
+    },
+    {
+      "geometries": 79,
+      "textures": 39,
+      "programs": 36,
+      "calls": 71,
+      "triangles": 45906,
+      "listeners": 5,
+      "voices": 0,
+      "cards": 1,
+      "enemyVisuals": 0,
+      "effects": {
+        "ribbons": 0,
+        "rings": 0,
+        "particles": 0,
+        "shards": 0,
+        "dropped": 0
+      },
+      "loops": 1,
+      "sceneChildren": 8
+    },
+    {
+      "geometries": 79,
+      "textures": 39,
+      "programs": 36,
+      "calls": 71,
+      "triangles": 45906,
+      "listeners": 5,
+      "voices": 0,
+      "cards": 1,
+      "enemyVisuals": 0,
+      "effects": {
+        "ribbons": 0,
+        "rings": 0,
+        "particles": 0,
+        "shards": 0,
+        "dropped": 0
+      },
+      "loops": 1,
+      "sceneChildren": 8
+    },
+    {
+      "geometries": 79,
+      "textures": 39,
+      "programs": 35,
+      "calls": 71,
+      "triangles": 45906,
+      "listeners": 5,
+      "voices": 0,
+      "cards": 1,
+      "enemyVisuals": 0,
+      "effects": {
+        "ribbons": 0,
+        "rings": 0,
+        "particles": 0,
+        "shards": 0,
+        "dropped": 0
+      },
+      "loops": 1,
+      "sceneChildren": 8
+    },
+    {
+      "geometries": 79,
+      "textures": 39,
+      "programs": 36,
+      "calls": 71,
+      "triangles": 45906,
+      "listeners": 5,
+      "voices": 0,
+      "cards": 1,
+      "enemyVisuals": 0,
+      "effects": {
+        "ribbons": 0,
+        "rings": 0,
+        "particles": 0,
+        "shards": 0,
+        "dropped": 0
+      },
+      "loops": 1,
+      "sceneChildren": 8
+    }
+  ],
+  "stress": {
+    "perf": {
+      "frames": 7,
+      "simSecondsPerWallSecond": 0.035,
+      "avgMs": 2247.53,
+      "p95Ms": 5766.5,
+      "maxMs": 5766.5,
+      "updateMs": 3.78,
+      "renderSubmitMs": 774.25,
+      "dpr": 1,
+      "quality": "high",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      }
+    },
+    "res": {
+      "geometries": 56,
+      "textures": 38,
+      "programs": 34,
+      "calls": 115,
+      "triangles": 211596,
+      "listeners": 5,
+      "voices": 0,
+      "cards": 6,
+      "enemyVisuals": 80,
+      "effects": {
+        "ribbons": 0,
+        "rings": 0,
+        "particles": 0,
+        "shards": 0,
+        "dropped": 0
+      },
+      "loops": 1,
+      "sceneChildren": 8
+    },
+    "pauseLatency": 4755
+  },
+  "finishedAt": "2026-10-08T11:35:09.004Z",
+  "failures": 0
+}

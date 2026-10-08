@@ -143,6 +143,9 @@ export function installDevApi(app: App): void {
       app.capture = on;
       document.body.classList.toggle('capture', on);
     },
+    offersSettled() {
+      return app.cards.offersSettled();
+    },
     offerScreen(i: number) {
       return toClient(app.cards.trayWorld(i));
     },

@@ -21,11 +21,11 @@ Latest report (seeds 7919·k, k = 1..30):
 
 | policy | wins / 30 | avg final HP | HP at drafts 1–7 | losses by trial (1–8) |
 |---|---:|---:|---|---|
-| focused | 19 | 47 | 100 100 100 95 71 60 60 | 0 0 0 0 3 3 1 4 |
-| crowd | 19 | 30 | 100 100 98 88 77 77 66 | 0 0 0 0 1 0 1 9 |
-| mixed | 19 | 30 | 100 100 95 85 78 78 70 | 0 0 0 0 1 0 0 10 |
-| needleOnly | 10 | 18 | 100 100 100 95 74 64 64 | 0 0 0 0 3 1 2 14 |
-| bellOnly | 14 | 28 | 100 100 93 78 57 53 43 | 0 0 0 0 2 1 6 7 |
+| focused | 22 | 57 | 100 100 100 95 71 60 60 | 0 0 0 0 3 3 1 1 |
+| crowd | 23 | 45 | 100 100 98 88 77 77 73 | 0 0 0 0 1 0 0 6 |
+| mixed | 27 | 44 | 100 100 95 85 78 78 74 | 0 0 0 0 1 0 0 2 |
+| needleOnly | 17 | 38 | 100 100 100 95 74 64 65 | 0 0 0 0 3 1 1 8 |
+| bellOnly | 18 | 34 | 100 100 93 78 57 53 48 | 0 0 0 0 2 1 4 5 |
 
 Reading it:
 
@@ -35,9 +35,14 @@ Reading it:
   (trial 5) and *swarm* (trial 6) trials — overkill on fragile foes is their weakness.
 * **Crowd builds** hold the crowd/swarm trials almost perfectly (77 → 77 HP) but lose ground in
   the *urn* trial (7) and the mixed finale: chain and ring damage is thin against 65+ HP urns.
-* **Mono-builds** win less often than composed builds.
-* The finale (trial 8) is the hardest test by design; scripted bots win ~60–65% with good
-  builds. Human players also choose sockets/replacements with more context than the scripts.
+* **Mono-builds** win clearly less often than composed builds; the composed `mixed` policy is
+  the most reliable (27/30), which is the intended reward for build composition.
+* The finale (trial 8) remains the hardest test by design: most remaining losses happen there.
+* An earlier version was harsher (urn trial 0.70→0.95/s at 55% urns, finale 1.15→1.45/s at 20%
+  urns). A complete ordinary-input browser run on that version (see `docs/VERIFICATION.md`) held
+  94 Integrity through trial 7 and then collapsed to 0 in ~23 s of the finale as urns carried
+  over from trial 7 piled up. That cliff felt unfair, so both trials were softened to the values
+  below.
 
 These values are tuned hypotheses, not certified balance.
 
@@ -51,8 +56,8 @@ These values are tuned hypotheses, not certified balance.
 | Base depth | 6.7 | 7.0 | Gives the central seam/emitter room without shrinking the 2.04 × 2.72 card faces. |
 | Card face | 2.1 × 2.8 | 2.04 × 2.72 | Fits six sockets with beveled lips on the 7.8 × 7.0 lid; measured ≥ 70 × 80 CSS px at 1280×720. |
 | Spawn packs | — | `packSize` per trial | Packs share an approach angle (rate is still enemies/s and fractional progress is retained). Gives the crowd/swarm trials a real identity and rewards chain/ring weapons. |
-| Trial 7 (urn) | 0.62→0.82/s | 0.70→0.95/s, 55% urns | Made the urn trial punish crowd-only builds. |
-| Trial 8 | 1.2→1.6/s | 1.15→1.45/s | Finale was killing even well-composed builds >70% of the time. |
+| Trial 7 (urn) | 0.62→0.82/s | 0.62→0.86/s, 50% urns | Urn-heavy enough to punish crowd-only builds without a carry-over cliff. |
+| Trial 8 | 1.2→1.6/s | 1.10→1.40/s, 16% urns | The original finale killed even well-composed builds most of the time. |
 
 HP growth stays linear at `1 + 0.1·(trial−1)`; no exponential stats and no new enemy behaviours.
 
@@ -66,8 +71,8 @@ HP growth stays linear at `1 + 0.1·(trial−1)`; no exponential stats and no ne
 | 4 | 0.62 → 0.88 | 1–3 | mixed | |
 | 5 | 0.95 → 1.25 | 3–5 | crowd of echoes | crowd-heavy |
 | 6 | 1.00 → 1.35 | 2–4 | moth swarm | fast-spirit-heavy |
-| 7 | 0.70 → 0.95 | 1–2 | urn procession | urn-heavy |
-| 8 | 1.15 → 1.45 | 2–3 | mixed finale, then clearing | |
+| 7 | 0.62 → 0.86 | 1–2 | urn procession (50% urns) | urn-heavy |
+| 8 | 1.10 → 1.40 | 2–3 | mixed finale, then clearing | |
 
 ## Travel times (spawn ring r = 9.5, Base half-extents 3.9 × 3.5)
 

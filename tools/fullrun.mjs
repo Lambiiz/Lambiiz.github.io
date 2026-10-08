@@ -51,13 +51,7 @@ for (;;) {
   if (s.phase !== 'DRAFT') break;
   draftNo++;
   // let the cards rise naturally (presentation time, no settle helper): wait until they stop moving
-  let prev = '';
-  for (let k = 0; k < 120; k++) {
-    await page.waitForTimeout(500);
-    const cur = JSON.stringify(await page.evaluate(() => [0, 1, 2].map((i) => __PALIMPSEST__.offerScreen(i))));
-    if (cur === prev) break;
-    prev = cur;
-  }
+  await page.waitForFunction(() => __PALIMPSEST__.offersSettled(), null, { timeout: 120000, polling: 500 });
   const owned = new Set(s.slots.filter(Boolean).map((w) => w.defId));
   const offer = s.draft.offer;
   let pick = offer.findIndex((id) => WEAPONS.includes(id) && !owned.has(id));

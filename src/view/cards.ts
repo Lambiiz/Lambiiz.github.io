@@ -497,6 +497,12 @@ export class CardsView {
     return v ? v.group.position.clone() : this.trayTarget(i);
   }
 
+  /** True once every offered card has finished rising into the tray (presentation state only). */
+  offersSettled(): boolean {
+    const offers = [...this.cards.values()].filter((v) => v.offerIndex !== null);
+    return offers.length > 0 && offers.every((v) => v.delay <= 0 && v.pos.distanceTo(v.target) < 0.03 && v.vel.length() < 0.05);
+  }
+
   liveCount(): number {
     return this.cards.size;
   }

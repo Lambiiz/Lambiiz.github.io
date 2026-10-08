@@ -12,7 +12,9 @@ same encounter resumes. Survive eight trials (the eighth ends in a clearing peri
 Built with Three.js r186 (WebGL2), TypeScript (strict), Vite and Vitest. No backend, no paid or
 downloaded assets: every texture, model, effect and sound is generated procedurally at runtime.
 
-![Combat](docs/screenshots/06-six-slots-combat.png)
+![A crowded late trial: six memory cards charging in the Base](docs/screenshots/15-stress-1920x1080.png)
+
+![Drafting: three memory cards rise onto the tray](docs/screenshots/03-draft-choices.png)
 
 ## Run it
 
@@ -27,6 +29,7 @@ npm run build     # typecheck + production build into dist/ (relative base, stat
 npm run preview   # serve dist/ at http://127.0.0.1:4173
 npm run balance   # print the whole-run balance table (scripted draft policies)
 npm run smoke     # Playwright browser smoke suite against the dev server (see below)
+node tools/fullrun.mjs http://127.0.0.1:4173/ low - 960x540   # one whole run with ordinary inputs
 ```
 
 A desktop browser with WebGL2 is required; if it is unavailable the page shows a support message.
@@ -136,7 +139,7 @@ an explicit **Resume** with a reset frame clock — no catch-up.
 ### Rendering notes
 
 * `three@0.186.1` only (one copy), WebGLRenderer + `three/addons` from the same package.
-* Composer: `RenderPass` into a half-float MSAA render target (4× High, 2× Low) →
+* Composer: `RenderPass` into a half-float render target with 4× MSAA on High (Low drops MSAA) →
   `UnrealBloomPass` (High only) → `OutputPass` (always on: ACES Filmic + sRGB conversion once).
 * Card charge overlay: unlit `ShaderMaterial`, premultiplied normal blending for the tint plus a
   controlled HDR meniscus/edge/filament term; depth-tested, no depth write, polygon offset.
@@ -160,8 +163,13 @@ an explicit **Resume** with a reset frame clock — no catch-up.
 * `npm run smoke` — Playwright drives the real canvas and DOM: start, normal-time combat, boundary
   freeze, invalid drop, pointer cancel, click-to-place with double click, drag-to-place, replace
   preview/cancel/confirm, boons, pause, visibility suspension, defeat/victory/restart, ten-restart
-  resource plateau, three resolutions, Low quality, charge fixture, stress fixture. Results land
-  in `tools/out/smoke-report.json` and screenshots in `docs/screenshots/`.
+  resource plateau, three resolutions, Low quality, charge fixture, stress fixture — 40 checks.
+  Results land in `tools/out/smoke-report.json` and screenshots in `docs/screenshots/`.
+* `tools/fullrun.mjs` — plays one entire eight-trial run with real drags/clicks only (no
+  fast-forward) and restarts from the ending.
+* Developer API (dev server, or any build with `?dev`): `window.__PALIMPSEST__` exposes snapshots,
+  `chargeFixture()`, `attackPose()`, `stressFixture()`, projected card/socket positions,
+  `resources()` and `perf()`. `?seed=N` replays a displayed seed.
 
 See [docs/VERIFICATION.md](docs/VERIFICATION.md) for the latest evidence and known limitations.
 

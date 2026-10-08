@@ -1,0 +1,197 @@
+{
+  "startedAt": "2026-10-08T10:55:14.647Z",
+  "quality": "low",
+  "viewport": "960x540",
+  "trials": [
+    {
+      "trial": 1,
+      "hpAtBoundary": 100,
+      "simRate": 0,
+      "kills": 9,
+      "survivorsCarried": 1,
+      "offer": [
+        "needle",
+        "thread",
+        "bell"
+      ],
+      "action": "dragged thread into socket 2",
+      "build": [
+        "needle",
+        "thread",
+        null,
+        null,
+        null,
+        null
+      ],
+      "wallSeconds": 101
+    },
+    {
+      "trial": 2,
+      "hpAtBoundary": 100,
+      "simRate": 0,
+      "kills": 25,
+      "survivorsCarried": 0,
+      "offer": [
+        "thread",
+        "bell",
+        "needle"
+      ],
+      "action": "click-placed bell in socket 3",
+      "build": [
+        "needle",
+        "thread",
+        "bell",
+        null,
+        null,
+        null
+      ],
+      "wallSeconds": 189
+    },
+    {
+      "trial": 3,
+      "hpAtBoundary": 100,
+      "simRate": 0,
+      "kills": 39,
+      "survivorsCarried": 6,
+      "offer": [
+        "needle",
+        "light",
+        "polish"
+      ],
+      "action": "dragged light into socket 4",
+      "build": [
+        "needle",
+        "thread",
+        "bell",
+        "light",
+        null,
+        null
+      ],
+      "wallSeconds": 282
+    },
+    {
+      "trial": 4,
+      "hpAtBoundary": 94,
+      "simRate": 0,
+      "kills": 62,
+      "survivorsCarried": 3,
+      "offer": [
+        "bell",
+        "mend",
+        "thread"
+      ],
+      "action": "click-placed thread in socket 5",
+      "build": [
+        "needle",
+        "thread",
+        "bell",
+        "light",
+        "thread",
+        null
+      ],
+      "wallSeconds": 375
+    },
+    {
+      "trial": 5,
+      "hpAtBoundary": 94,
+      "simRate": 0,
+      "kills": 93,
+      "survivorsCarried": 7,
+      "offer": [
+        "thread",
+        "bell",
+        "polish"
+      ],
+      "action": "used polish",
+      "build": [
+        "needle",
+        "thread",
+        "bell",
+        "light",
+        "thread",
+        null
+      ],
+      "wallSeconds": 469
+    },
+    {
+      "trial": 6,
+      "hpAtBoundary": 94,
+      "simRate": 0,
+      "kills": 129,
+      "survivorsCarried": 7,
+      "offer": [
+        "needle",
+        "polish",
+        "bell"
+      ],
+      "action": "used polish",
+      "build": [
+        "needle",
+        "thread",
+        "bell",
+        "light",
+        "thread",
+        null
+      ],
+      "wallSeconds": 563
+    },
+    {
+      "trial": 7,
+      "hpAtBoundary": 94,
+      "simRate": 0,
+      "kills": 150,
+      "survivorsCarried": 8,
+      "offer": [
+        "mend",
+        "thread",
+        "light"
+      ],
+      "action": "dragged thread into socket 6",
+      "build": [
+        "needle",
+        "thread",
+        "bell",
+        "light",
+        "thread",
+        "thread"
+      ],
+      "wallSeconds": 663
+    }
+  ],
+  "console": [],
+  "seed": 419979565,
+  "outcome": "DEFEAT",
+  "final": {
+    "trial": 8,
+    "hp": 0,
+    "kills": 171,
+    "arrivals": 9,
+    "simTime": 233.35,
+    "build": [
+      "needle",
+      "thread",
+      "bell",
+      "light",
+      "thread",
+      "thread"
+    ]
+  },
+  "wallSeconds": 733,
+  "perf": {
+    "frames": 240,
+    "simSecondsPerWallSecond": 0.352,
+    "avgMs": 287.97,
+    "p95Ms": 483.3,
+    "maxMs": 733.3,
+    "updateMs": 0.68,
+    "renderSubmitMs": 2.53,
+    "dpr": 1,
+    "quality": "low",
+    "viewport": {
+      "width": 960,
+      "height": 540
+    }
+  },
+  "restartOk": true,
+  "finishedAt": "2026-10-08T11:07:43.734Z"
+}
