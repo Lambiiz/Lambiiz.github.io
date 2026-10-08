@@ -25,7 +25,7 @@ npm ci            # install the locked dependency tree
 npm run dev       # http://127.0.0.1:5173
 npm run typecheck # tsc --noEmit (strict)
 npm test          # Vitest: deterministic simulation, phase and balance checks
-npm run build     # typecheck + production build into dist/ (relative base, static hostable)
+npm run build     # typecheck + production build, published to the repo root for GitHub Pages
 npm run preview   # serve dist/ at http://127.0.0.1:4173
 npm run balance   # print the whole-run balance table (scripted draft policies)
 npm run smoke     # Playwright browser smoke suite against the dev server (see below)
@@ -36,24 +36,16 @@ A desktop browser with WebGL2 is required; if it is unavailable the page shows a
 
 ## GitHub Pages
 
-The production build is fully static (relative asset paths, fonts bundled, no service calls), so
-`dist/` runs from the site root or any subfolder — verified by serving it at `/palimpsest/`.
+Pages serves the `palimpsest` branch **directly from the repository root**: the root
+`index.html` and `assets/` are the built game (relative paths, bundled fonts, no service calls).
 
-`.github/workflows/pages.yml` runs on every push to `palimpsest`: `npm ci` → `npm test` →
-`npm run build` → uploads `dist/` as a Pages artifact. Deployment is **manual and opt-in**,
-because this repository's live site is currently a different game served from `main`'s root and
-an Actions deployment replaces whatever Pages serves. To publish PALIMPSEST:
-
-1. **Settings → Pages → Build and deployment → Source: "GitHub Actions"** (this switches the
-   site away from the `main` branch).
-2. **Settings → Environments → github-pages → Deployment branches**: allow `palimpsest`
-   (by default only the default branch may deploy).
-3. **Actions → "PALIMPSEST Pages" → Run workflow** on `palimpsest`, tick **deploy**.
-   The game appears at `https://lambiiz.github.io/`.
-
-To keep the existing game and host PALIMPSEST beside it instead, copy `dist/` into a
-`palimpsest/` folder on the branch Pages serves; it will run at
-`https://lambiiz.github.io/palimpsest/`.
+* Source lives in `src/` (dev entry `src/index.html`). Never edit the root `index.html` or
+  `assets/` by hand.
+* `npm run build` = typecheck → `vite build` into `dist/` → `tools/publish.mjs` copies the build
+  to the root. Commit the regenerated `index.html` + `assets/` with the source change.
+* `.github/workflows/pages.yml` is the safety net: on every push to `palimpsest` it runs the
+  tests, rebuilds, and commits the build if it was stale. Pages' own "pages build and
+  deployment" run then publishes the branch.
 
 ## How to play
 

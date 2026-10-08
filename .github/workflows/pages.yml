@@ -1,25 +1,19 @@
-name: PALIMPSEST Pages
+name: PALIMPSEST build
 
-# Every push to `palimpsest` runs the tests and builds the static game into a GitHub Pages
-# artifact. Deploying is a deliberate, manual step (Actions → "PALIMPSEST Pages" → Run workflow
-# with deploy = true) because this repository's live site is currently served from `main`;
-# deploying through Actions replaces whatever Pages is serving. See README → "GitHub Pages".
+# GitHub Pages serves this branch straight from the repository root (index.html + assets/ are the
+# built game). `npm run build` regenerates them locally; this workflow is the safety net: it runs
+# the tests, rebuilds, and commits the result if the committed build was stale.
 on:
   push:
     branches: [palimpsest]
   workflow_dispatch:
-    inputs:
-      deploy:
-        description: Deploy the build to GitHub Pages (replaces the current site)
-        type: boolean
-        default: false
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: palimpsest-pages
-  cancel-in-progress: true
+  group: palimpsest-build
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -32,23 +26,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run build # typecheck + vite build into dist/ (relative base: works at / or any subpath)
-      - name: Disable Jekyll processing
-        run: touch dist/.nojekyll
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-  deploy:
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - run: npm run build
+      - name: Commit the rebuilt game if it changed
+        run: |
+          git add -A index.html assets .nojekyll
+          if git diff --cached --quiet; then
+            echo "Committed build is up to date."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Rebuild game"
+            git push
+          fi
