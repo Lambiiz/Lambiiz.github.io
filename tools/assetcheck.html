@@ -1,0 +1,54 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Asset check</title>
+<style>html,body{margin:0;background:#222;overflow:hidden}#log{position:fixed;left:8px;top:8px;color:#fff;font:12px monospace;white-space:pre}</style>
+<script type="importmap">{"imports":{"three":"../vendor/three/three.module.js","three/addons/":"../vendor/three/addons/","@pixiv/three-vrm":"../vendor/three-vrm.module.js"}}</script>
+</head><body><div id="log"></div>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import { captureSourceRest, retargetClip } from '../src/assets/retarget.js';
+const P = new URLSearchParams(location.search);
+const names = (P.get('models') || 'AvatarSample_A,AvatarSample_B,AvatarSample_C,Sendagaya_Shibu,Sendagaya_Shino,Sakurada_Fumiriya,Darkness_Shibu,Victoria_Rubin,Vita,Vivi').split(',');
+const clipName = P.get('clip') || 'Idle_Loop';
+const t = parseFloat(P.get('t') || '0.5');
+const restName = P.get('rest') ?? 'A_TPose';
+const log = (s) => (document.getElementById('log').textContent += s + '\n');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight); document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8899aa);
+const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 100);
+const spread = 0.9;
+cam.position.set(0, 1.0, parseFloat(P.get('dist')||0) || (3 + names.length * 0.85)); cam.lookAt(0, 0.85, 0);
+if (P.get('side')) { cam.position.set(6 + names.length*0.6, 1.0, 0); cam.lookAt(0,0.85,0); }
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444466, 1.5));
+const dl = new THREE.DirectionalLight(0xffffff, 2); dl.position.set(2, 4, 3); scene.add(dl);
+scene.add(new THREE.GridHelper(20, 20));
+const loader = new GLTFLoader(); loader.register((p) => new VRMLoaderPlugin(p));
+const ual = await new GLTFLoader().loadAsync('../assets/anim/ual1_standard.glb');
+const restClip = restName ? ual.animations.find((a) => a.name === restName) : null;
+const rest = captureSourceRest(ual.scene, restClip);
+log('UAL clips: ' + ual.animations.length);
+const mixers = [];
+await Promise.all(names.map(async (n, i) => {
+  const t0 = performance.now();
+  const g = await loader.loadAsync(`../assets/models/${n}.vrm`);
+  const vrm = g.userData.vrm;
+  VRMUtils.removeUnnecessaryVertices(g.scene); VRMUtils.combineSkeletons?.(g.scene);
+  VRMUtils.rotateVRM0(vrm);
+  vrm.scene.position.x = (i - (names.length - 1) / 2) * spread;
+  scene.add(vrm.scene);
+  const cl = (P.get('clips')||'').split(',')[i] || clipName; const src = ual.animations.find((a) => a.name === cl);
+  const clip = retargetClip(src, rest, vrm);
+  const m = new THREE.AnimationMixer(vrm.scene); m.clipAction(clip).play(); m.setTime(parseFloat((P.get('ts')||'').split(',')[i]) || t);
+  mixers.push([m, vrm]);
+  const box = new THREE.Box3().setFromObject(vrm.scene);
+  let tris = 0; vrm.scene.traverse(o => { if (o.isMesh) tris += o.geometry.index ? o.geometry.index.count/3 : o.geometry.attributes.position.count/3; });
+  log(`${n}: v${vrm.meta.metaVersion} h=${(box.max.y-box.min.y).toFixed(2)} hips=${vrm.humanoid.getNormalizedBoneNode('hips').position.y.toFixed(2)} tris=${tris|0} ${(performance.now()-t0)|0}ms`);
+}));
+for (const [m, vrm] of mixers) { vrm.update(0); }
+renderer.render(scene, cam);
+window.__ready = true;
+let last = performance.now();
+renderer.setAnimationLoop(() => { const now = performance.now(); const dt = Math.min(0.05,(now-last)/1000); last = now; if (P.get('play')) for (const [m, vrm] of mixers) { m.update(dt); vrm.update(dt);} renderer.render(scene, cam); });
+</script></body></html>

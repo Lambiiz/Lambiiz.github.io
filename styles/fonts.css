@@ -1,0 +1,5 @@
+@font-face { font-family: 'Anton'; font-style: normal; font-weight: 400; font-display: block; src: url('../assets/fonts/Anton-400.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: italic; font-weight: 600; font-display: block; src: url('../assets/fonts/BarlowCondensed-600i.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: italic; font-weight: 800; font-display: block; src: url('../assets/fonts/BarlowCondensed-800i.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 500; font-display: block; src: url('../assets/fonts/BarlowCondensed-500.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 700; font-display: block; src: url('../assets/fonts/BarlowCondensed-700.woff2') format('woff2'); }

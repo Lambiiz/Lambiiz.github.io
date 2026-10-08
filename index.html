@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mirror Hour</title>
+  <meta name="description" content="A stylized third-person school RPG encounter built with Three.js." />
+  <link rel="stylesheet" href="styles/fonts.css" />
+  <link rel="stylesheet" href="styles/main.css" />
+  <link rel="stylesheet" href="styles/battle.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.js",
+        "three/addons/": "./vendor/three/addons/",
+        "@pixiv/three-vrm": "./vendor/three-vrm.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <canvas id="shatter"></canvas>
+  <div id="ui"></div>
+
+  <noscript>Mirror Hour needs JavaScript and WebGL.</noscript>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

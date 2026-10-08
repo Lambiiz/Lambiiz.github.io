@@ -1,0 +1,28 @@
+{
+  "name": "mirror-hour",
+  "version": "1.0.0",
+  "description": "Stylized third-person school RPG encounter (Three.js vertical slice)",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node tests/battle.test.mjs && node tools/e2e.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lambiiz/Lambiiz.github.io.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Lambiiz/Lambiiz.github.io/issues"
+  },
+  "homepage": "https://github.com/Lambiiz/Lambiiz.github.io#readme",
+  "dependencies": {
+    "@pixiv/three-vrm": "^3.5.5",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  },
+  "type": "module",
+  "private": true
+}
