@@ -1,15 +1,16 @@
 // Deterministic fixed-step combat simulation. It never reads meshes, uniforms or wall-clock time.
 //
 // Step order (documented in README):
+//   0. queued card effects that resolve when a wave begins (e.g. Scatter Ash)
 //   1. scheduled spawns (only while the trial clock is spawning)
-//   2. enemy movement toward the Base center
+//   2. enemy movement toward the Base center, then soft separation between foes (2b)
 //   3. weapons charge and fire in stable creation-ID order; instant damage resolves immediately
 //   4. projectile travel and resolved hits
 //   5. dead cleanup
 //   6. surviving enemies that contact the Base footprint deal damage once and are removed
 //   7. Base defeat check
 //   8. phase clock (trial boundary / clearing start / victory)
-import { ARENA, BASE, BOON_TUNING, ENEMIES, FIXED_DT, SLOT_COUNT, TRIALS, WEAPONS } from './content';
+import { ARENA, BASE, CROWD, ENEMIES, FIXED_DT, SLOT_COUNT, SLOTS_UNLOCKED_AT_START, TRIALS, WEAPONS } from './content';
 import { deriveStream, Rng } from './rng';
 import type {
   EnemyKind,
@@ -56,7 +57,13 @@ export class Simulation {
   spawnProgress = 0;
 
   baseHp = BASE.maxHealth;
-  polishStacks = 0;
+  /** Passive card modifiers; they last for one wave (reset when the next turn opens). */
+  damageBonus = 0;
+  speedFactor = 1;
+  /** Active effects queued to resolve on the first tick of the next wave. */
+  pendingBlasts: { damage: number; radius: number }[] = [];
+  /** Locked sockets cannot hold towers until unlocked by some run event. */
+  locked: boolean[] = Array.from({ length: SLOT_COUNT }, (_, i) => !SLOTS_UNLOCKED_AT_START.includes(i));
   enemies: EnemyState[] = [];
   projectiles: ProjectileState[] = [];
   /** Exactly six sockets; slot index has no gameplay meaning beyond ownership. */
@@ -84,7 +91,16 @@ export class Simulation {
   }
 
   get damageMultiplier(): number {
-    return 1 + BOON_TUNING.polishPerStack * this.polishStacks;
+    return 1 + this.damageBonus;
+  }
+
+  unlockSlot(slot: number): void {
+    this.locked[slot] = false;
+  }
+
+  resetWaveModifiers(): void {
+    this.damageBonus = 0;
+    this.speedFactor = 1;
   }
 
   /** Weapons sorted by stable creation ID. Slot order never matters. */
@@ -159,6 +175,12 @@ export class Simulation {
     this.tick++;
     this.simTime = this.tick * dt;
 
+    // 0. queued wave-start effects
+    if (this.pendingBlasts.length > 0) {
+      for (const b of this.pendingBlasts) this.resolveBlast(b.damage * this.damageMultiplier, b.radius);
+      this.pendingBlasts = [];
+    }
+
     // 1. spawns
     if (this.isSpawningWindow()) {
       this.spawnProgress += this.spawnRate() * dt;
@@ -173,11 +195,13 @@ export class Simulation {
       if (!e.alive) continue;
       const d = Math.hypot(e.x, e.z);
       if (d > EPS) {
-        const s = Math.min(e.speed * dt, d);
+        const s = Math.min(e.speed * this.speedFactor * dt, d);
         e.x -= (e.x / d) * s;
         e.z -= (e.z / d) * s;
       }
     }
+    // 2b. soft separation so the swarm spreads instead of stacking
+    this.separate();
     for (const p of this.projectiles) {
       p.prevX = p.x;
       p.prevZ = p.z;
@@ -223,7 +247,89 @@ export class Simulation {
     return 'continue';
   }
 
-  /** Called by the phase controller after a draft resolves. */
+  /**
+   * Deterministic soft collision: a uniform grid hash, pairs visited in stable ID order, each push
+   * capped. A push never moves a foe into contact with the Base (only walking does).
+   */
+  private separate(): void {
+    const n = this.enemies.length;
+    if (n < 2) return;
+    const cs = CROWD.cellSize;
+    const grid = new Map<number, number[]>();
+    const key = (cx: number, cz: number) => (cx + 4096) * 8192 + (cz + 4096);
+    for (let i = 0; i < n; i++) {
+      const e = this.enemies[i];
+      if (!e.alive) continue;
+      const k = key(Math.floor(e.x / cs), Math.floor(e.z / cs));
+      const bucket = grid.get(k);
+      if (bucket) bucket.push(i);
+      else grid.set(k, [i]);
+    }
+    const pushX = new Float64Array(n);
+    const pushZ = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = this.enemies[i];
+      if (!a.alive) continue;
+      const cx = Math.floor(a.x / cs);
+      const cz = Math.floor(a.z / cs);
+      for (let ox = -1; ox <= 1; ox++)
+        for (let oz = -1; oz <= 1; oz++) {
+          const bucket = grid.get(key(cx + ox, cz + oz));
+          if (!bucket) continue;
+          for (const j of bucket) {
+            if (j <= i) continue; // each pair once, in stable (spawn = ID) order
+            const b = this.enemies[j];
+            const dx = b.x - a.x;
+            const dz = b.z - a.z;
+            const min = a.radius + b.radius;
+            const d2 = dx * dx + dz * dz;
+            if (d2 >= min * min) continue;
+            let d = Math.sqrt(d2);
+            let nx: number;
+            let nz: number;
+            if (d < 1e-6) {
+              // exact overlap: separate along a direction derived from the IDs (deterministic)
+              const ang = ((a.id * 92821 + b.id * 68917) % 360) * (Math.PI / 180);
+              nx = Math.cos(ang);
+              nz = Math.sin(ang);
+              d = 0;
+            } else {
+              nx = dx / d;
+              nz = dz / d;
+            }
+            const push = (min - d) * CROWD.stiffness * 0.5;
+            pushX[i] -= nx * push;
+            pushZ[i] -= nz * push;
+            pushX[j] += nx * push;
+            pushZ[j] += nz * push;
+          }
+        }
+    }
+    for (let i = 0; i < n; i++) {
+      const e = this.enemies[i];
+      if (!e.alive || (pushX[i] === 0 && pushZ[i] === 0)) continue;
+      let px = pushX[i];
+      let pz = pushZ[i];
+      const len = Math.hypot(px, pz);
+      if (len > CROWD.maxPush) {
+        px *= CROWD.maxPush / len;
+        pz *= CROWD.maxPush / len;
+      }
+      const nx = e.x + px;
+      const nz = e.z + pz;
+      if (footprintGap(nx, nz) <= e.radius) continue; // never shoved into the Base
+      e.x = nx;
+      e.z = nz;
+    }
+  }
+
+  private resolveBlast(damage: number, radius: number): void {
+    const victims = this.enemies.filter((e) => e.alive && Math.hypot(e.x, e.z) <= radius + EPS);
+    this.events.push({ type: 'blast', t: this.simTime, radius, hits: victims.length });
+    for (const v of victims) this.damage(v, damage, 'ash');
+  }
+
+  /** Called by the phase controller when a turn ends and the next wave begins. */
   beginNextTrial(): void {
     if (this.trialIndex < this.trials.length - 1) {
       this.trialIndex++;
@@ -309,7 +415,7 @@ export class Simulation {
     this.fire(w, def);
   }
 
-  private damage(e: EnemyState, amount: number, source: WeaponId): void {
+  private damage(e: EnemyState, amount: number, source: WeaponId | 'ash'): void {
     if (!e.alive) return;
     e.hp -= amount;
     this.totalDamageDealt += amount;

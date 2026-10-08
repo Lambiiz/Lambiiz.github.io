@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BASE, FIXED_DT, TRIALS, WEAPONS } from '../src/game/content';
+import { BASE, ENEMIES, FIXED_DT, SLOTS_UNLOCKED_AT_START, TRIALS, WEAPONS } from '../src/game/content';
 import { FixedStepClock } from '../src/game/clock';
 import { chargeFraction, footprintGap, Simulation, touchesBase } from '../src/game/simulation';
 import type { SimEvent, TrialDef } from '../src/game/types';
@@ -28,6 +28,9 @@ function runTicks(sim: Simulation, n: number): SimEvent[] {
 }
 
 const fired = (ev: SimEvent[]) => ev.filter((e) => e.type === 'fired');
+const ticksOf = (seconds: number) => Math.round(seconds / FIXED_DT);
+const NEEDLE = WEAPONS.needle;
+const LIGHT = WEAPONS.light;
 
 describe('footprint contact geometry', () => {
   it('measures gap to the rectangle, not to the center', () => {
@@ -47,17 +50,17 @@ describe('footprint contact geometry', () => {
     expect(touchesBase({ x: BASE.halfX + 0.35, z: BASE.halfZ + 0.35, radius: r })).toBe(false);
   });
   it('bell radius covers the full footprint plus margin', () => {
-    expect(6.0).toBeGreaterThan(Math.hypot(BASE.halfX, BASE.halfZ) + 0.6);
+    expect(WEAPONS.bell.pulseRadius!).toBeGreaterThan(Math.hypot(BASE.halfX, BASE.halfZ) + 0.6);
   });
 });
 
 describe('cadence and charge authority', () => {
-  it('a 1.2 s weapon fires 10 times in 12 active seconds against a persistent target', () => {
+  it('a weapon fires exactly floor(12 s / interval) times in 12 active seconds against a persistent target', () => {
     const sim = quietSim();
     sim.installWeapon(0, 'needle');
     dummy(sim);
     const ev = runTicks(sim, 720);
-    expect(fired(ev).length).toBe(10);
+    expect(fired(ev).length).toBe(Math.floor(12 / NEEDLE.interval + 1e-9));
   });
 
   it('30/60/144 FPS frame schedules produce identical outcomes', () => {
@@ -104,7 +107,7 @@ describe('cadence and charge authority', () => {
     for (let i = 0; i < 600; i++) clock.advance(1 / 60, false, step); // 10s frozen
     for (let i = 0; i < 360; i++) clock.advance(1 / 60, true, step); // 6s active
     expect(sim.tick).toBe(720);
-    expect(shots).toBe(10);
+    expect(shots).toBe(Math.floor(12 / NEEDLE.interval + 1e-9));
   });
 
   it('a long stall is clamped and bounded to six catch-up steps', () => {
@@ -124,7 +127,7 @@ describe('cadence and charge authority', () => {
     const ev = runTicks(sim, 1);
     expect(fired(ev).length).toBe(1);
     expect(w.elapsed).toBe(0);
-    const ev2 = runTicks(sim, 179); // 3.0 s interval = 180 ticks
+    const ev2 = runTicks(sim, ticksOf(LIGHT.interval) - 1);
     expect(fired(ev2).length).toBe(0);
     expect(fired(runTicks(sim, 1)).length).toBe(1);
   });
@@ -179,12 +182,12 @@ describe('weapons', () => {
     const sim = quietSim();
     sim.installWeapon(0, 'needle');
     const e = dummy(sim, 0, 8, 100);
-    const ev = runTicks(sim, 72);
+    const ev = runTicks(sim, ticksOf(NEEDLE.interval));
     expect(fired(ev).length).toBe(1);
     expect(sim.projectiles.length).toBe(1);
-    runTicks(sim, 40);
+    runTicks(sim, 30);
     expect(sim.projectiles.length).toBe(0);
-    expect(e.hp).toBe(91);
+    expect(e.hp).toBe(100 - NEEDLE.damage);
   });
 
   it('needle retargets once when its target dies, else dissolves', () => {
@@ -192,23 +195,23 @@ describe('weapons', () => {
     sim.installWeapon(0, 'needle');
     const a = dummy(sim, 0, 9, 5);
     const b = dummy(sim, 1, 9, 100);
-    runTicks(sim, 72);
+    runTicks(sim, ticksOf(NEEDLE.interval));
     expect(sim.projectiles.length).toBe(1);
     // kill a by other means before arrival
     a.alive = false;
     sim.enemies = sim.enemies.filter((x) => x.alive);
-    runTicks(sim, 60);
-    expect(b.hp).toBe(91);
+    runTicks(sim, 30);
+    expect(b.hp).toBe(100 - NEEDLE.damage);
   });
 
   it('lingering projectiles keep launch damage after weapon replacement', () => {
     const sim = quietSim();
     sim.installWeapon(0, 'needle');
     const e = dummy(sim, 0, 9, 100);
-    runTicks(sim, 72);
+    runTicks(sim, ticksOf(NEEDLE.interval));
     sim.installWeapon(0, 'bell');
-    runTicks(sim, 40);
-    expect(e.hp).toBe(91);
+    runTicks(sim, 30);
+    expect(e.hp).toBe(100 - NEEDLE.damage);
   });
 
   it('kindred thread hits up to three distinct enemies with descending hop damage within hop range', () => {
@@ -245,30 +248,30 @@ describe('weapons', () => {
     expect(w.shots).toBe(0);
     expect(chargeFraction(w)).toBe(1);
     const inA = dummy(sim, 0, r - 0.2, 100);
-    const inB = dummy(sim, -4, 3, 100);
+    const inB = dummy(sim, -(BASE.halfX + 1.2), 3, 100);
     runTicks(sim, 1);
     const d = WEAPONS.bell.damage;
     expect([inA.hp, inB.hp, out.hp]).toEqual([100 - d, 100 - d, 100]);
   });
 
-  it('polished memory multiplies damage additively', () => {
+  it('passive damage bonus multiplies damage additively', () => {
     const sim = quietSim();
-    sim.polishStacks = 2;
+    sim.damageBonus = 0.3;
     sim.installWeapon(0, 'light');
     const e = dummy(sim, 0, 6, 100);
-    runTicks(sim, 180);
-    expect(e.hp).toBeCloseTo(100 - 32 * 1.3);
+    runTicks(sim, ticksOf(LIGHT.interval));
+    expect(e.hp).toBeCloseTo(100 - LIGHT.damage * 1.3);
   });
 
   it('instant damage lets a later weapon ignore a just-killed enemy', () => {
     const sim = quietSim();
     sim.installWeapon(0, 'light');
     sim.installWeapon(1, 'light');
-    const weak = dummy(sim, 0, 5, 20);
-    const strong = dummy(sim, 0, 8, 100);
-    runTicks(sim, 180);
+    const weak = dummy(sim, 0, BASE.halfZ + 2, 20);
+    const strong = dummy(sim, 0, BASE.halfZ + 5, 100);
+    runTicks(sim, ticksOf(LIGHT.interval));
     expect(weak.alive).toBe(false);
-    expect(strong.hp).toBe(68);
+    expect(strong.hp).toBe(100 - LIGHT.damage);
   });
 });
 
@@ -287,13 +290,13 @@ describe('arrival, death and endings', () => {
     const sim = quietSim();
     sim.spawnEnemy('urn', BASE.halfX + 1, BASE.halfZ + 1, 1);
     runTicks(sim, 600);
-    expect(sim.baseHp).toBe(100 - 14);
+    expect(sim.baseHp).toBe(100 - ENEMIES.urn.contactDamage);
   });
 
   it('death prevents same-tick contact', () => {
     const sim = quietSim();
     const w = sim.installWeapon(0, 'light');
-    w.elapsed = 3.0 - FIXED_DT; // fires next tick
+    w.elapsed = LIGHT.interval - FIXED_DT; // fires next tick
     const e = sim.spawnEnemy('echo', BASE.halfX + e0Radius() + 0.005, 0, 1);
     const ev = runTicks(sim, 1);
     expect(e.alive).toBe(false);
@@ -305,8 +308,8 @@ describe('arrival, death and endings', () => {
   it('defeat is reported once and overrides a simultaneous boundary', () => {
     const trials = TRIALS.map((t) => ({ ...t, durationSeconds: 1 }));
     const sim = new Simulation({ seed: 1, trials, spawning: false });
-    sim.baseHp = 5;
-    sim.spawnEnemy('echo', BASE.halfX + 0.42 + 0.7 * (59 / 60) + 0.0001, 0, 1);
+    sim.baseHp = ENEMIES.echo.contactDamage - 1;
+    sim.spawnEnemy('echo', BASE.halfX + ENEMIES.echo.radius + ENEMIES.echo.speed * (59 / 60) + 0.0001, 0, 1);
     const outcomes: string[] = [];
     for (let i = 0; i < 60; i++) {
       const o = sim.step();
@@ -353,5 +356,64 @@ describe('arrival, death and endings', () => {
 });
 
 function e0Radius() {
-  return 0.42;
+  return ENEMIES.echo.radius;
 }
+
+describe('swarm collision, locks and card effects', () => {
+  function crowd(seed: number) {
+    const sim = new Simulation({ seed, trials: LONG_TRIALS, spawning: false });
+    for (let i = 0; i < 40; i++) sim.spawnEnemy('echo', 15 + (i % 5) * 0.05, (i % 8) * 0.05, 1);
+    runTicks(sim, 120);
+    return sim;
+  }
+
+  it('soft collision spreads stacked foes apart without leaving overlaps unresolved forever', () => {
+    const sim = crowd(1);
+    let overlaps = 0;
+    const es = sim.enemies;
+    for (let i = 0; i < es.length; i++)
+      for (let j = i + 1; j < es.length; j++) if (Math.hypot(es[i].x - es[j].x, es[i].z - es[j].z) < (es[i].radius + es[j].radius) * 0.5) overlaps++;
+    expect(es.length).toBe(40);
+    expect(overlaps).toBe(0);
+  });
+
+  it('soft collision is deterministic', () => {
+    expect(JSON.stringify(crowd(3).enemies)).toBe(JSON.stringify(crowd(3).enemies));
+  });
+
+  it('a push never causes Base contact; only walking does', () => {
+    const sim = quietSim();
+    const r = ENEMIES.echo.radius;
+    // two foes stacked just outside the footprint, not moving
+    const a = sim.spawnEnemy('echo', BASE.halfX + r + 0.02, 0, 1);
+    const b = sim.spawnEnemy('echo', BASE.halfX + r + 0.03, 0, 1);
+    a.speed = 0;
+    b.speed = 0;
+    runTicks(sim, 30);
+    expect(sim.baseHp).toBe(100);
+    expect(sim.enemies.length).toBe(2);
+  });
+
+  it('only the starting sockets are unlocked', () => {
+    const sim = quietSim();
+    expect(sim.locked.map((l, i) => (!l ? i : -1)).filter((i) => i >= 0)).toEqual(SLOTS_UNLOCKED_AT_START);
+    sim.unlockSlot(0);
+    expect(sim.locked[0]).toBe(false);
+  });
+
+  it('queued blasts resolve on the first tick of the next wave; slow factor scales speed', () => {
+    const sim = quietSim();
+    const near = dummy(sim, 0, 6, 100);
+    const far = dummy(sim, 0, 14, 100);
+    sim.pendingBlasts.push({ damage: 12, radius: 10 });
+    const ev = runTicks(sim, 1);
+    expect(ev.some((e) => e.type === 'blast')).toBe(true);
+    expect([near.hp, far.hp]).toEqual([88, 100]);
+    expect(sim.pendingBlasts.length).toBe(0);
+    const slow = new Simulation({ seed: 2, trials: LONG_TRIALS, spawning: false });
+    slow.speedFactor = 0.5;
+    const e = slow.spawnEnemy('echo', 20, 0, 1);
+    runTicks(slow, 60);
+    expect(20 - e.x).toBeCloseTo(ENEMIES.echo.speed * 0.5, 5);
+  });
+});

@@ -19,7 +19,6 @@ import {
   PLINTH_TOP,
   SOCKET_FLOOR,
   socketCenter,
-  STACK_POS,
 } from './layout';
 
 function roundedRectShape(w: number, h: number, r: number, cx = 0, cy = 0): THREE.Shape {
@@ -105,6 +104,16 @@ export class BoardView {
   private pulse = 0;
   private disposables: { dispose(): void }[] = [];
   readonly apertureGroup = new THREE.Group();
+  private rangeRing: THREE.Mesh;
+  private rangeMat: THREE.MeshBasicMaterial;
+  private rangeFill: THREE.Mesh;
+  private rangeFillMat: THREE.MeshBasicMaterial;
+  private rangeTarget = 0;
+  private rangeLevel = 0;
+  private rangeRadius = 1;
+  private flames: THREE.Mesh[] = [];
+  private candleLights: THREE.PointLight[] = [];
+  private lockCovers: THREE.Mesh[] = [];
 
   constructor(renderer: THREE.WebGLRenderer) {
     const track = <T extends { dispose(): void }>(x: T): T => {
@@ -118,91 +127,93 @@ export class BoardView {
     brassTex.wrapS = brassTex.wrapT = THREE.RepeatWrapping;
     const brass = track(new THREE.MeshStandardMaterial({ color: 0xc8ab70, map: brassTex, metalness: 0.85, roughness: 0.38 }));
     const darkBrass = track(new THREE.MeshStandardMaterial({ color: 0x8a7041, map: brassTex, metalness: 0.8, roughness: 0.5 }));
-    const ceramicTex = tex(art.drawCeramic());
-    ceramicTex.wrapS = ceramicTex.wrapT = THREE.RepeatWrapping;
-    const ceramic = track(new THREE.MeshStandardMaterial({ color: 0xd9cfb6, map: ceramicTex, roughness: 0.5, metalness: 0.0 }));
-    const enamelTex = tex(art.drawLidEnamel());
-    const enamel = track(
-      new THREE.MeshPhysicalMaterial({
-        color: 0xffffff,
-        map: enamelTex,
-        roughness: 0.28,
-        metalness: 0.05,
-        clearcoat: 0.6,
-        clearcoatRoughness: 0.25,
-      }),
-    ); // the single hero physical material
-    const boardTex = tex(art.drawBoardTop());
-    const board = track(new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.82, metalness: 0.08 }));
-    const boardSide = track(new THREE.MeshStandardMaterial({ color: 0x0d1320, roughness: 0.7, metalness: 0.2 }));
-    const rimTex = tex(art.drawRimBand());
-    rimTex.wrapS = THREE.RepeatWrapping;
-    rimTex.repeat.set(3, 1);
-    const rimBand = track(new THREE.MeshStandardMaterial({ map: rimTex, metalness: 0.85, roughness: 0.36 }));
-
-    // --- void backdrop far below
-    const voidTex = tex(art.drawVoid());
-    const voidPlane = new THREE.Mesh(track(new THREE.PlaneGeometry(120, 120)), track(new THREE.MeshBasicMaterial({ map: voidTex, toneMapped: false, depthWrite: false })));
-    voidPlane.rotation.x = -Math.PI / 2;
-    voidPlane.position.y = -14;
-    voidPlane.renderOrder = -10;
-    this.root.add(voidPlane);
-
-    // --- board disc
+    const woodTex = tex(art.drawDarkWood());
+    woodTex.wrapS = woodTex.wrapT = THREE.RepeatWrapping;
+    const ceramic = track(new THREE.MeshStandardMaterial({ color: 0xb08a66, map: woodTex, roughness: 0.72, metalness: 0.0 })); // carved reliquary wood
+    const enamel = track(new THREE.MeshStandardMaterial({ color: 0x8a6a50, map: woodTex, roughness: 0.6, metalness: 0.0 }));
     const R = ARENA.boardRadius;
-    const boardGeo = track(new THREE.CylinderGeometry(R, R - 0.25, 0.6, 160, 1));
-    const boardMesh = new THREE.Mesh(boardGeo, [boardSide, board, boardSide]);
-    boardMesh.position.y = -0.3;
-    boardMesh.receiveShadow = true;
-    this.root.add(boardMesh);
-    // underside taper: floating ceremonial slab
-    const under = new THREE.Mesh(track(new THREE.CylinderGeometry(R - 0.25, R - 2.4, 1.1, 96, 1, true)), boardSide);
-    under.position.y = -1.15;
-    this.root.add(under);
-    const underRing = new THREE.Mesh(track(new THREE.TorusGeometry(R - 1.6, 0.06, 8, 128)), darkBrass);
-    underRing.rotation.x = Math.PI / 2;
-    underRing.position.y = -1.3;
-    this.root.add(underRing);
 
-    // --- brass rim (lathe profile) + engraved band
-    const rimProfile = [
-      new THREE.Vector2(R - 0.18, 0.0),
-      new THREE.Vector2(R - 0.16, 0.12),
-      new THREE.Vector2(R - 0.05, 0.2),
-      new THREE.Vector2(R + 0.25, 0.22),
-      new THREE.Vector2(R + 0.42, 0.14),
-      new THREE.Vector2(R + 0.45, -0.05),
-    ];
-    const rim = new THREE.Mesh(track(new THREE.LatheGeometry(rimProfile, 180)), brass);
-    rim.receiveShadow = true;
-    this.root.add(rim);
-    const band = new THREE.Mesh(track(new THREE.CylinderGeometry(R + 0.45, R + 0.3, 0.55, 180, 1, true)), rimBand);
-    band.position.y = -0.32;
-    this.root.add(band);
+    // --- the physical wooden table the game is played on
+    const tableTex = tex(art.drawWoodTable());
+    tableTex.wrapS = tableTex.wrapT = THREE.RepeatWrapping;
+    tableTex.repeat.set(5, 5);
+    const table = new THREE.Mesh(track(new THREE.PlaneGeometry(240, 240)), track(new THREE.MeshStandardMaterial({ map: tableTex, color: 0xb59a80, roughness: 0.86, metalness: 0.0 })));
+    table.rotation.x = -Math.PI / 2;
+    table.receiveShadow = true;
+    this.root.add(table);
+    // the arena circle inked into the wood
+    const decalTex = tex(art.drawArenaDecal(R, ARENA.spawnRadius));
+    const decal = new THREE.Mesh(track(new THREE.PlaneGeometry((R + 1.5) * 2, (R + 1.5) * 2)), track(new THREE.MeshStandardMaterial({ map: decalTex, transparent: true, depthWrite: false, roughness: 0.9 })));
+    decal.rotation.x = -Math.PI / 2;
+    decal.position.y = 0.004;
+    decal.receiveShadow = true;
+    this.root.add(decal);
 
-    // memory stack ledge on the near rim (draft cards rise from here)
-    const ledge = new THREE.Mesh(track(new RoundedBoxGeometry(2.0, 0.18, 2.4, 3, 0.06)), brass);
-    ledge.position.set(STACK_POS.x, 0.02, STACK_POS.z);
-    ledge.rotation.y = -0.25;
-    ledge.castShadow = ledge.receiveShadow = true;
-    this.root.add(ledge);
-    const backTex = tex(art.drawCardBack());
-    const backMat = track(new THREE.MeshStandardMaterial({ map: backTex, roughness: 0.5, metalness: 0.1 }));
-    const edgeMat = track(new THREE.MeshStandardMaterial({ color: 0xdfd3b2, roughness: 0.7 }));
-    // the stack body is one baked mesh; only the top card back carries the artwork
-    const stackCard = new THREE.BoxGeometry(1.5, 0.035, 2.0);
-    const stackXf: THREE.Matrix4[] = [];
-    for (let i = 0; i < 5; i++) stackXf.push(trs(STACK_POS.x + (i % 2) * 0.02, 0.13 + i * 0.04, STACK_POS.z - i * 0.015, 0, ledge.rotation.y + (i - 2) * 0.03, 0));
-    const stack = new THREE.Mesh(track(bake(stackCard, stackXf)), edgeMat);
-    stack.castShadow = true;
-    this.root.add(stack);
-    stackCard.dispose();
-    const topBack = new THREE.Mesh(track(new THREE.PlaneGeometry(1.46, 1.96)), backMat);
-    topBack.rotation.set(-Math.PI / 2, 0, ledge.rotation.y + 2 * 0.03, 'YXZ');
-    topBack.rotation.set(-Math.PI / 2, 0, 0);
-    topBack.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), ledge.rotation.y + 0.06);
-    topBack.position.set(STACK_POS.x, 0.13 + 4 * 0.04 + 0.019, STACK_POS.z - 4 * 0.015);
-    this.root.add(topBack);
+    // range preview ring (hovering a placed or selected tower)
+    this.rangeMat = track(new THREE.MeshBasicMaterial({ color: 0x69dad0, transparent: true, opacity: 0, depthWrite: false }));
+    this.rangeRing = new THREE.Mesh(track(new THREE.RingGeometry(0.985, 1, 160)), this.rangeMat);
+    this.rangeRing.rotation.x = -Math.PI / 2;
+    this.rangeRing.position.y = 0.03;
+    this.rangeRing.renderOrder = 2;
+    this.rangeRing.visible = false;
+    this.root.add(this.rangeRing);
+    this.rangeFillMat = track(new THREE.MeshBasicMaterial({ color: 0x69dad0, transparent: true, opacity: 0, depthWrite: false }));
+    this.rangeFill = new THREE.Mesh(track(new THREE.CircleGeometry(1, 128)), this.rangeFillMat);
+    this.rangeFill.rotation.x = -Math.PI / 2;
+    this.rangeFill.position.y = 0.025;
+    this.rangeFill.visible = false;
+    this.root.add(this.rangeFill);
+
+    // low-contrast table clutter outside the arena: candles, bone dice, an old book, coins
+    const wax = track(new THREE.MeshStandardMaterial({ color: 0xcbbc98, roughness: 0.8 }));
+    const dieMat = track(new THREE.MeshStandardMaterial({ map: tex(art.drawDie()), roughness: 0.6 }));
+    const bookMat = track(new THREE.MeshStandardMaterial({ color: 0x3a2418, roughness: 0.9 }));
+    const pageMat = track(new THREE.MeshStandardMaterial({ color: 0xb9a888, roughness: 0.95 }));
+    const flameMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc36b).multiplyScalar(3) }));
+    const candleGeo = track(new THREE.CylinderGeometry(0.55, 0.62, 1, 16));
+    const flameGeo = track(new THREE.SphereGeometry(0.16, 10, 8));
+    flameGeo.scale(1, 2.2, 1);
+    for (const [x, z, h] of [
+      [-R - 6, -R + 4, 3.2],
+      [-R - 4.4, -R + 6.2, 2.0],
+      [R + 6, -R + 1, 2.6],
+    ] as const) {
+      const candle = new THREE.Mesh(candleGeo, wax);
+      candle.scale.set(1, h, 1);
+      candle.position.set(x, h / 2, z);
+      candle.castShadow = true;
+      this.root.add(candle);
+      const flame = new THREE.Mesh(flameGeo, flameMat);
+      flame.position.set(x, h + 0.4, z);
+      this.root.add(flame);
+      this.flames.push(flame);
+      const light = new THREE.PointLight(0xffb060, 30, 40, 1.6);
+      light.position.set(x, h + 1.2, z);
+      this.root.add(light);
+      this.candleLights.push(light);
+    }
+    const dieGeo = track(new RoundedBoxGeometry(1.2, 1.2, 1.2, 3, 0.18));
+    for (const [x, z, r] of [
+      [-R - 3, -R + 12, 0.4],
+      [-R - 1.4, -R + 14, 1.1],
+    ] as const) {
+      const die = new THREE.Mesh(dieGeo, dieMat);
+      die.position.set(x, 0.6, z);
+      die.rotation.set(0, r, 0);
+      die.castShadow = true;
+      this.root.add(die);
+    }
+    const book = new THREE.Mesh(track(new RoundedBoxGeometry(9, 1.4, 12, 3, 0.25)), [pageMat, bookMat, bookMat, bookMat, pageMat, pageMat]);
+    book.position.set(R + 10, 0.7, -R + 8);
+    book.rotation.y = 0.35;
+    book.castShadow = true;
+    this.root.add(book);
+    const coinGeo = track(new THREE.CylinderGeometry(0.5, 0.5, 0.08, 20));
+    for (let i = 0; i < 5; i++) {
+      const coin = new THREE.Mesh(coinGeo, darkBrass);
+      coin.position.set(R + 3 + i * 0.35, 0.04 + i * 0.08, -R + 14 + (i % 2) * 0.1);
+      this.root.add(coin);
+    }
 
     // --- Base: stepped pedestal
     const hx = BASE.halfX;
@@ -306,8 +317,18 @@ export class BoardView {
     lips.castShadow = true;
     lips.receiveShadow = true;
     this.baseGroup.add(floors, lips);
+    const coverTex = tex(art.drawLockCover());
+    const coverMat = track(new THREE.MeshStandardMaterial({ map: coverTex, metalness: 0.7, roughness: 0.45 }));
+    const coverGeo = track(new RoundedBoxGeometry(HOLE_W - 0.04, 0.08, HOLE_H - 0.04, 2, 0.03));
     for (let s = 0; s < SLOT_COUNT; s++) {
       const c = socketCenter(s);
+      const cover = new THREE.Mesh(coverGeo, coverMat);
+      cover.position.set(c.x, LID_TOP - 0.03, c.z);
+      cover.castShadow = true;
+      cover.receiveShadow = true;
+      cover.visible = false;
+      this.baseGroup.add(cover);
+      this.lockCovers.push(cover);
       const haloMat = track(new THREE.MeshBasicMaterial({ color: 0x69dad0, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
       const halo = new THREE.Mesh(haloGeo, haloMat);
       halo.rotation.x = -Math.PI / 2;
@@ -369,8 +390,9 @@ export class BoardView {
 
     // --- return aperture beyond the far rim
     // beyond the far-left rim, angled toward the viewer so it reads clearly
-    this.apertureGroup.position.set(-10.2, 0, -7.6);
-    this.apertureGroup.rotation.y = 0.55;
+    this.apertureGroup.position.set(-ARENA.boardRadius - 8, 0, -12);
+    this.apertureGroup.rotation.y = 0.45;
+    this.apertureGroup.scale.setScalar(2.4);
     const pedestal = new THREE.Mesh(track(new RoundedBoxGeometry(2.6, 0.5, 1.2, 3, 0.1)), darkBrass);
     pedestal.position.y = -0.15;
     this.apertureGroup.add(pedestal);
@@ -415,12 +437,33 @@ export class BoardView {
   combatFitPoints(): THREE.Vector3[] {
     // every spawn approach (ring + enemy height) and the Base; the ornamental rim may bleed off-edge
     const pts: THREE.Vector3[] = [];
-    const R = ARENA.spawnRadius + 0.7;
+    const R = ARENA.spawnRadius + 0.8;
     for (let i = 0; i < 48; i++) {
       const a = (i / 48) * Math.PI * 2;
       pts.push(new THREE.Vector3(Math.cos(a) * R, 0, Math.sin(a) * R), new THREE.Vector3(Math.cos(a) * R, 1.3, Math.sin(a) * R));
     }
     return pts;
+  }
+
+  get rangeVisible(): { level: number; radius: number } {
+    return { level: this.rangeLevel, radius: this.rangeRadius };
+  }
+
+  /** Show covers on locked sockets. */
+  setLocked(locked: boolean[]): void {
+    locked.forEach((l, i) => (this.lockCovers[i].visible = l));
+  }
+
+  /** Range preview around the Base centre (null hides it). */
+  setRange(radius: number | null, color = 0x69dad0): void {
+    if (radius === null) {
+      this.rangeTarget = 0;
+      return;
+    }
+    this.rangeTarget = 1;
+    this.rangeRadius = radius;
+    this.rangeMat.color.setHex(color);
+    this.rangeFillMat.color.setHex(color);
   }
 
   setProgress(trialsCleared: number): void {
@@ -477,6 +520,24 @@ export class BoardView {
     const k = Math.max(0, 1 - this.baseShakeAge / 0.35);
     const shake = this.baseShake * k * k;
     this.baseGroup.position.set(Math.sin(this.baseShakeAge * 70) * 0.05 * shake, -0.04 * shake, Math.cos(this.baseShakeAge * 55) * 0.03 * shake);
+
+    // range preview (presentation)
+    this.rangeLevel += (this.rangeTarget - this.rangeLevel) * (1 - Math.exp(-presentDt * 14));
+    const show = this.rangeLevel > 0.01;
+    this.rangeRing.visible = this.rangeFill.visible = show;
+    if (show) {
+      const r = this.rangeRadius;
+      this.rangeRing.scale.set(r, r, 1);
+      this.rangeFill.scale.set(r, r, 1);
+      this.rangeMat.opacity = 0.85 * this.rangeLevel;
+      this.rangeFillMat.opacity = 0.07 * this.rangeLevel;
+    }
+    // candle flicker
+    this.flames.forEach((f, i) => {
+      const k = 1 + Math.sin(time * 11 + i * 2.1) * 0.08 + Math.sin(time * 23 + i) * 0.05;
+      f.scale.set(1, k, 1);
+      this.candleLights[i].intensity = 30 * k;
+    });
 
     this.pulse = Math.max(0, this.pulse - simDt * 5);
     const breathe = 0.5 + 0.5 * Math.sin(time * 1.7);

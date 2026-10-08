@@ -1,8 +1,9 @@
-// Compact DOM HUD: integrity, trial clock, pause/mute/quality/restart, title, draft panel with a
-// 14px+ detail view, keyboard-accessible mirrors of offer/socket commands, and end overlays.
-import { BASE, BOON_TUNING, cardDef, ENEMIES, isWeaponId, STAKES_LINE, TRIAL_COUNT, WEAPONS } from '../game/content';
-import type { DraftStage } from '../game/phases';
-import type { CardId, Phase, WeaponId } from '../game/types';
+// Compact DOM HUD. Cards themselves are physical objects in the scene; the DOM only carries
+// Integrity, wave clock, settings, the turn controls (energy, piles, End Turn), a contextual
+// action bar (sacrifice/purge/replace/cancel), a 14px card tooltip and the overlays.
+import { BASE, cardDef, ENEMIES, STAKES_LINE, TRIAL_COUNT, TURN, WEAPONS } from '../game/content';
+import type { TurnStage } from '../game/phases';
+import type { CardId, Phase } from '../game/types';
 
 export interface HudCallbacks {
   start(): void;
@@ -12,12 +13,12 @@ export interface HudCallbacks {
   setVolume(v: number): void;
   toggleQuality(): void;
   restart(): void;
-  selectOffer(i: number): void;
-  placeSlot(s: number): void;
-  useBoon(): void;
+  endTurn(): void;
+  sacrifice(): void;
+  purge(): void;
+  clearMarks(): void;
   confirmReplace(): void;
   cancel(): void;
-  continueRun(): void;
 }
 
 export interface HudState {
@@ -25,7 +26,7 @@ export interface HudState {
   suspended: boolean;
   pauseReason: 'manual' | 'suspended' | null;
   hp: number;
-  trialIndex: number;
+  waveIndex: number;
   trialTime: number;
   trialDuration: number;
   clearing: boolean;
@@ -34,54 +35,55 @@ export interface HudState {
   quality: 'high' | 'low';
   seed: number;
   kills: number;
-  polishStacks: number;
-  slots: ({ defId: WeaponId; charge: number } | null)[];
-  draft: null | {
-    draftIndex: number;
-    offer: CardId[];
-    selected: number | null;
-    stage: DraftStage;
-    pendingSlot: number | null;
+  towers: number;
+  turn: null | {
+    turnIndex: number;
+    energy: number;
+    stage: TurnStage;
+    marked: number;
+    purgesLeft: number;
+    selectedName: string | null;
+    selectedIsTower: boolean;
+    replace: { from: string; to: string } | null;
     forecast: string;
-    resolvedCard: CardId | null;
+    nextWave: number;
+    canEndTurn: boolean;
   };
+  piles: { draw: number; discard: number; drawPos: { x: number; y: number }; discardPos: { x: number; y: number }; cardH: number };
 }
 
-function weaponStats(id: WeaponId, polish: number): [string, string][] {
-  const w = WEAPONS[id];
-  const mul = 1 + BOON_TUNING.polishPerStack * polish;
-  const dmg = (n: number) => (Math.round(n * mul * 10) / 10).toString();
-  const rows: [string, string][] = [['Interval', `${w.interval.toFixed(1)} s`]];
-  if (w.pattern === 'chain') rows.push(['Damage', (w.chainDamage ?? []).map(dmg).join(' / ')], ['Targets', `up to 3, hop ${w.chainHopRange}`], ['Range', `${w.range}`]);
-  else if (w.pattern === 'pulse') rows.push(['Damage', `${dmg(w.damage)} to all`], ['Radius', `${w.pulseRadius} from Base centre`]);
-  else rows.push(['Damage', dmg(w.damage)], ['Range', `${w.range}`], ['Delivery', w.pattern === 'projectile' ? 'homing needle' : 'instant lance']);
-  rows.push(['DPS (1 target)', ((w.pattern === 'chain' ? (w.chainDamage ?? [0])[0] : w.damage) * mul / w.interval).toFixed(1)]);
-  return rows;
-}
-
-export function detailHtml(id: CardId, polish: number, extra = ''): string {
+export function detailHtml(id: CardId, extra = ''): string {
   const d = cardDef(id);
-  const type = d.kind === 'weapon' ? `Weapon · ${{ projectile: 'Single target', lance: 'Heavy single target', chain: 'Chain', pulse: 'Area ring' }[WEAPONS[d.id].pattern]}` : 'Boon · resolves immediately';
-  const rows = d.kind === 'weapon' ? weaponStats(d.id, polish) : id === 'polish' ? [['Effect', `+15% weapon damage (now ${polish}/2)`]] : [['Effect', `Restore ${BOON_TUNING.mendAmount} Integrity`]];
-  return `<div class="name">${d.name}</div><div class="type">${type}</div>
-    <div>${d.summary}</div>
+  const typeName = { tower: 'Tower', active: 'Active', passive: 'Passive · lasts the next wave' }[d.type];
+  let rows: [string, string][] = [['Cost', `${d.cost} energy`]];
+  if (d.type === 'tower') {
+    const w = WEAPONS[d.id];
+    rows = rows.concat([
+      ['Damage', w.pattern === 'chain' ? (w.chainDamage ?? []).join(' / ') : w.pattern === 'pulse' ? `${w.damage} to all in reach` : `${w.damage}`],
+      ['Interval', `${w.interval.toFixed(1)} s`],
+      ['Range', w.pattern === 'pulse' ? `${w.pulseRadius} around the vessel` : `${w.range}`],
+    ]);
+    if (w.pattern === 'chain') rows.push(['Chain', `3 foes, hop ${w.chainHopRange}`]);
+  }
+  return `<div class="tt-head tt-${d.type}"><span class="tt-name">${d.name}</span><span class="tt-type">${typeName}</span></div>
+    <div class="tt-body">${d.summary}</div>
     <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>${extra}
-    <div class="flavor">“${d.flavor}”</div>`;
+    <div class="tt-flavor">“${d.flavor}”</div>`;
 }
 
 export class Hud {
-  private root: HTMLElement;
   private el: Record<string, HTMLElement> = {};
-  private draftKey = '';
   private lastHp = BASE.maxHealth;
   private hitTimer = 0;
   private toastTimer = 0;
-  private hoverCard: { id: CardId; charge: number | null; slot: number | null } | null = null;
   private offListeners: (() => void)[] = [];
   private lastPhase: Phase | null = null;
+  private turnKey = '';
 
-  constructor(root: HTMLElement, cb: HudCallbacks) {
-    this.root = root;
+  constructor(
+    private root: HTMLElement,
+    cb: HudCallbacks,
+  ) {
     root.innerHTML = `
       <div id="hud" class="hidden" role="toolbar" aria-label="Game controls">
         <div class="brand">PALIMPSEST</div>
@@ -91,9 +93,9 @@ export class Hud {
           <span class="value">100</span>
         </div>
         <div class="meter" id="trial">
-          <span class="label">Trial <span class="trial-n">1</span>/${TRIAL_COUNT}</span>
+          <span class="label">Wave <span class="trial-n">1</span>/${TRIAL_COUNT}</span>
           <div class="bar"><div class="fill"></div></div>
-          <span class="value">30</span>
+          <span class="value">30s</span>
         </div>
         <div class="hud-spacer"></div>
         <div class="hud-buttons">
@@ -101,24 +103,38 @@ export class Hud {
           <button id="btn-mute" title="Mute (M)">Mute</button>
           <label class="volume" title="Volume"><span class="sr-only">Volume</span><input id="volume" type="range" min="0" max="100" value="70" aria-label="Volume" /></label>
           <button id="btn-quality" title="Toggle quality (Q)">Quality: High</button>
-          <button id="btn-restart" class="danger" title="Restart (R)">Restart</button>
+          <button id="btn-restart" class="danger" title="Restart">Restart</button>
         </div>
       </div>
+      <div id="forecast" class="hidden"></div>
+      <div id="energy" class="hidden" aria-live="polite"><span class="label">Energy</span><span class="pips"></span><span class="value"></span></div>
+      <div id="draw-count" class="pile-count hidden" title="Draw pile"></div>
+      <div id="discard-count" class="pile-count hidden" title="Discard pile"></div>
+      <button id="btn-end-turn" class="primary hidden" title="End turn (E)">End Turn</button>
+      <div id="action-bar" class="hidden">
+        <span id="action-text"></span>
+        <button id="btn-sacrifice" class="hidden">Sacrifice</button>
+        <button id="btn-purge" class="hidden">Purge</button>
+        <button id="btn-clear" class="hidden">Clear</button>
+        <button id="btn-replace" class="primary hidden">Replace</button>
+        <button id="btn-cancel" class="hidden">Cancel</button>
+      </div>
+      <div id="tooltip" class="hidden" role="tooltip"></div>
       <div id="title-overlay" class="overlay">
         <div class="plate">
           <h1>PALIMPSEST</h1>
           <div class="stakes">${STAKES_LINE}</div>
           <div class="divider"></div>
-          <p>Your weapons are memory cards seated in the vessel. Each fills with light from bottom to top, then the vessel fires on its own.</p>
-          <p>Between trials, choose one memory. Drag it into a socket, or click it and then click a socket.</p>
-          <div class="actions"><button id="btn-start" class="primary">Begin the Trials</button></div>
-          <p class="small">P pause · M mute · Q quality · Esc cancel · 1–3 choose · 1–6 socket</p>
+          <p>Seat tower cards in the vessel; each fills with light and fires on its own. Between waves, play your hand with ${TURN.energyPerTurn} energy.</p>
+          <p>Drag or click cards to play them. Right-click cards to mark them: sacrifice two for something new, or purge one.</p>
+          <div class="actions"><button id="btn-start" class="primary">Begin</button></div>
+          <p class="small">E end turn · Esc cancel · P pause · M mute · Q quality · wheel zoom · Z reset zoom</p>
         </div>
       </div>
       <div id="pause-overlay" class="overlay soft hidden">
         <div class="plate">
           <h2 id="pause-title">Paused</h2>
-          <p id="pause-text">The trial is held still.</p>
+          <p id="pause-text">The wave is held still.</p>
           <div class="actions"><button id="btn-resume" class="primary">Resume</button></div>
         </div>
       </div>
@@ -131,62 +147,9 @@ export class Hud {
           <p class="small" id="end-seed"></p>
         </div>
       </div>
-      <aside id="draft-panel" class="hidden" aria-label="Choose a memory">
-        <div class="eyebrow" id="draft-eyebrow"></div>
-        <h3 id="draft-heading">Choose one memory</h3>
-        <div class="forecast" id="draft-forecast"></div>
-        <div class="offer-list" id="offer-list" role="group" aria-label="Offered cards"></div>
-        <div class="detail" id="draft-detail"></div>
-        <div id="compare-slot"></div>
-        <div class="socket-list hidden" id="socket-list" role="group" aria-label="Sockets"></div>
-        <div class="hint" id="draft-hint"></div>
-        <div class="draft-actions">
-          <button id="btn-use" class="primary hidden">Use</button>
-          <button id="btn-replace" class="primary hidden">Replace</button>
-          <button id="btn-cancel" class="hidden">Cancel</button>
-          <button id="btn-continue" class="primary" disabled>Continue</button>
-        </div>
-      </aside>
-      <div id="inspect" class="detail hidden" aria-live="polite"></div>
       <div id="toast" class="hidden"></div>
     `;
-    const ids = [
-      'hud',
-      'integrity',
-      'trial',
-      'btn-pause',
-      'btn-mute',
-      'btn-quality',
-      'btn-restart',
-      'title-overlay',
-      'btn-start',
-      'pause-overlay',
-      'pause-title',
-      'pause-text',
-      'btn-resume',
-      'end-overlay',
-      'end-title',
-      'end-text',
-      'end-stats',
-      'end-seed',
-      'btn-end-restart',
-      'draft-panel',
-      'draft-eyebrow',
-      'draft-heading',
-      'draft-forecast',
-      'offer-list',
-      'draft-detail',
-      'compare-slot',
-      'socket-list',
-      'draft-hint',
-      'btn-use',
-      'btn-replace',
-      'btn-cancel',
-      'btn-continue',
-      'inspect',
-      'toast',
-    ];
-    for (const id of ids) this.el[id] = root.querySelector(`#${id}`) as HTMLElement;
+    root.querySelectorAll<HTMLElement>('[id]').forEach((n) => (this.el[n.id] = n));
 
     const on = (id: string, fn: () => void) => {
       const h = (e: Event) => {
@@ -203,43 +166,49 @@ export class Hud {
     on('btn-quality', () => cb.toggleQuality());
     on('btn-restart', () => cb.restart());
     on('btn-end-restart', () => cb.restart());
-    on('btn-use', () => cb.useBoon());
+    on('btn-end-turn', () => cb.endTurn());
+    on('btn-sacrifice', () => cb.sacrifice());
+    on('btn-purge', () => cb.purge());
+    on('btn-clear', () => cb.clearMarks());
     on('btn-replace', () => cb.confirmReplace());
     on('btn-cancel', () => cb.cancel());
-    on('btn-continue', () => cb.continueRun());
-    const delegate = (id: string, attr: string, fn: (n: number) => void) => {
-      const h = (e: Event) => {
-        const b = (e.target as HTMLElement).closest(`button[${attr}]`) as HTMLButtonElement | null;
-        if (b && !b.disabled) fn(Number(b.getAttribute(attr)));
-      };
-      this.el[id].addEventListener('click', h);
-      this.offListeners.push(() => this.el[id].removeEventListener('click', h));
-    };
-    const vol = root.querySelector('#volume') as HTMLInputElement;
+    const vol = this.el.volume as HTMLInputElement;
     const onVol = () => cb.setVolume(Number(vol.value) / 100);
     vol.addEventListener('input', onVol);
     this.offListeners.push(() => vol.removeEventListener('input', onVol));
-    delegate('offer-list', 'data-offer', (i) => cb.selectOffer(i));
-    delegate('socket-list', 'data-slot', (s) => cb.placeSlot(s));
-  }
-
-  /** Called by input when a card is hovered (offer or equipped). */
-  setHoverCard(card: { id: CardId; charge: number | null; slot: number | null } | null): void {
-    this.hoverCard = card;
   }
 
   toast(text: string, seconds = 2.5): void {
     this.el.toast.textContent = text;
     this.el.toast.classList.remove('hidden');
-    this.el.toast.style.opacity = '1';
     this.toastTimer = seconds;
   }
 
-  /** Safe-area insets (CSS px) the camera must keep clear. */
-  insets(phase: Phase): { top: number; right: number; bottom: number; left: number } {
-    const drafting = phase === 'DRAFT' || phase === 'PLACEMENT';
-    const panel = drafting ? (this.el['draft-panel'].getBoundingClientRect().width || 330) + 20 : 0;
-    return { top: 56, right: panel, bottom: 6, left: 6 };
+  /** Show a card tooltip next to a screen rect (CSS px), or hide it. */
+  setTooltip(html: string | null, rect?: { x: number; y: number; w: number; h: number }): void {
+    const tt = this.el.tooltip;
+    if (!html || !rect) {
+      tt.classList.add('hidden');
+      return;
+    }
+    tt.innerHTML = html;
+    tt.classList.remove('hidden');
+    const W = this.root.clientWidth;
+    const H = this.root.clientHeight;
+    const tw = tt.offsetWidth || 280;
+    const th = tt.offsetHeight || 200;
+    let x = rect.x + rect.w + 12;
+    if (x + tw > W - 8) x = rect.x - tw - 12;
+    x = Math.max(8, Math.min(W - tw - 8, x));
+    let y = rect.y + rect.h / 2 - th / 2;
+    y = Math.max(64, Math.min(H - th - 8, y));
+    tt.style.left = `${x}px`;
+    tt.style.top = `${y}px`;
+  }
+
+  /** Bottom safe area the camera fit should keep clear (CSS px). */
+  insets(): { top: number; right: number; bottom: number; left: number } {
+    return { top: 56, right: 0, bottom: 40, left: 0 };
   }
 
   focusPrimary(phase: Phase): void {
@@ -253,7 +222,6 @@ export class Hud {
     this.el.hud.classList.toggle('hidden', !inRun);
     this.el['title-overlay'].classList.toggle('hidden', s.phase !== 'TITLE');
 
-    // integrity
     const hpFrac = Math.max(0, s.hp / BASE.maxHealth);
     (this.el.integrity.querySelector('.fill') as HTMLElement).style.transform = `scaleX(${hpFrac})`;
     (this.el.integrity.querySelector('.value') as HTMLElement).textContent = `${Math.ceil(s.hp)}`;
@@ -263,28 +231,26 @@ export class Hud {
     this.hitTimer = Math.max(0, this.hitTimer - dt);
     this.el.integrity.classList.toggle('hit', this.hitTimer > 0);
 
-    // trial clock (reads the trial definition's duration)
-    (this.el.trial.querySelector('.trial-n') as HTMLElement).textContent = `${s.trialIndex + 1}`;
+    const turn = s.phase === 'TURN' && s.turn;
+    (this.el.trial.querySelector('.trial-n') as HTMLElement).textContent = `${(turn ? s.turn!.nextWave : s.waveIndex) + 1}`;
     const remaining = Math.max(0, s.trialDuration - s.trialTime);
-    (this.el.trial.querySelector('.fill') as HTMLElement).style.transform = `scaleX(${s.clearing ? 0 : remaining / s.trialDuration})`;
-    (this.el.trial.querySelector('.value') as HTMLElement).textContent = s.clearing ? `${s.enemiesLeft} left` : `${Math.ceil(remaining)}s`;
+    (this.el.trial.querySelector('.fill') as HTMLElement).style.transform = `scaleX(${turn ? 1 : s.clearing ? 0 : remaining / s.trialDuration})`;
+    (this.el.trial.querySelector('.value') as HTMLElement).textContent = turn ? 'next' : s.clearing ? `${s.enemiesLeft} left` : `${Math.ceil(remaining)}s`;
 
     this.el['btn-pause'].textContent = s.phase === 'PAUSED' ? 'Resume' : 'Pause';
     (this.el['btn-pause'] as HTMLButtonElement).disabled = !(s.phase === 'COMBAT' || s.phase === 'CLEARING' || s.phase === 'PAUSED');
     this.el['btn-mute'].textContent = s.muted ? 'Unmute' : 'Mute';
     this.el['btn-quality'].textContent = `Quality: ${s.quality === 'high' ? 'High' : 'Low'}`;
 
-    // pause / suspension
     const paused = s.phase === 'PAUSED' || s.suspended;
     this.el['pause-overlay'].classList.toggle('hidden', !paused);
     if (paused) {
       const susp = s.suspended || s.pauseReason === 'suspended';
       this.el['pause-title'].textContent = susp ? 'The vessel waits' : 'Paused';
-      this.el['pause-text'].textContent = susp ? 'The trial was suspended while you were away. Nothing advanced.' : 'The trial is held still.';
+      this.el['pause-text'].textContent = susp ? 'The run was suspended while you were away. Nothing advanced.' : 'The wave is held still.';
       if (phaseChanged) this.el['btn-resume'].focus({ preventScroll: true });
     }
 
-    // endings
     const ended = s.phase === 'DEFEAT' || s.phase === 'VICTORY';
     this.el['end-overlay'].classList.toggle('hidden', !ended);
     if (ended && phaseChanged) {
@@ -293,17 +259,13 @@ export class Hud {
       const win = s.phase === 'VICTORY';
       this.el['end-overlay'].className = `overlay ${win ? 'victory' : 'defeat'}`;
       this.el['end-title'].textContent = win ? 'Returned to Life' : 'The Vessel Breaks';
-      this.el['end-text'].textContent = win
-        ? 'Eight trials endured. The aperture opens and the soul rises toward a new life.'
-        : 'Your memories scatter into the void. The instrument can be wound again.';
-      const build = s.slots.filter(Boolean).length;
-      this.el['end-stats'].innerHTML = `<div><b>${s.trialIndex + 1}/${TRIAL_COUNT}</b>trial</div><div><b>${s.kills}</b>echoes laid to rest</div><div><b>${build}</b>memories held</div><div><b>${Math.ceil(s.hp)}</b>integrity</div>`;
+      this.el['end-text'].textContent = win ? 'Eight waves endured. The aperture opens and the soul rises toward a new life.' : 'Your memories scatter across the table. The instrument can be wound again.';
+      this.el['end-stats'].innerHTML = `<div><b>${s.waveIndex + 1}/${TRIAL_COUNT}</b>wave</div><div><b>${s.kills}</b>echoes laid to rest</div><div><b>${s.towers}</b>towers held</div><div><b>${Math.ceil(s.hp)}</b>integrity</div>`;
       this.el['end-seed'].textContent = `Seed ${s.seed}`;
       setTimeout(() => this.el['btn-end-restart'].focus({ preventScroll: true }), 0);
     }
 
-    this.updateDraft(s);
-    this.updateInspect(s);
+    this.updateTurn(s);
 
     if (this.toastTimer > 0) {
       this.toastTimer -= dt;
@@ -311,82 +273,67 @@ export class Hud {
     }
   }
 
-  private updateDraft(s: HudState): void {
-    const drafting = (s.phase === 'DRAFT' || s.phase === 'PLACEMENT') && !!s.draft;
-    this.el['draft-panel'].classList.toggle('hidden', !drafting);
-    if (!drafting || !s.draft) {
-      this.draftKey = '';
+  private updateTurn(s: HudState): void {
+    const t = s.phase === 'TURN' || s.suspended ? s.turn : null;
+    for (const id of ['forecast', 'energy', 'draw-count', 'discard-count', 'btn-end-turn']) this.el[id].classList.toggle('hidden', !t);
+    if (!t) {
+      this.el['action-bar'].classList.add('hidden');
+      this.turnKey = '';
       return;
     }
-    const d = s.draft;
-    const hoverId = this.hoverCard && this.hoverCard.slot === null ? this.hoverCard.id : null;
-    const key = JSON.stringify([d, s.slots.map((x) => x?.defId ?? null), s.hp, s.polishStacks, hoverId, s.suspended]);
-    if (key === this.draftKey) return;
-    this.draftKey = key;
+    const p = s.piles;
+    this.place(this.el['draw-count'], p.drawPos.x, p.drawPos.y - p.cardH * 0.5 - 14);
+    this.place(this.el['discard-count'], p.discardPos.x, p.discardPos.y - p.cardH * 0.5 - 14);
+    this.place(this.el.energy, p.drawPos.x, p.drawPos.y - p.cardH * 0.5 - 52);
+    this.place(this.el['btn-end-turn'], p.discardPos.x, p.discardPos.y - p.cardH * 0.5 - 58);
+    const key = JSON.stringify([t, p.draw, p.discard, s.suspended]);
+    if (key === this.turnKey) return;
+    this.turnKey = key;
 
-    this.el['draft-eyebrow'].textContent = `Trial ${d.draftIndex + 1} endured`;
-    this.el['draft-heading'].textContent = d.stage === 'resolved' ? 'Memory reclaimed' : 'Choose one memory';
-    this.el['draft-forecast'].textContent = `Next: ${d.forecast}`;
-    const locked = d.stage === 'settling' || d.stage === 'resolved' || d.stage === 'confirmReplace';
-    this.el['offer-list'].innerHTML = d.offer
-      .map((id, i) => {
-        const def = cardDef(id);
-        const owned = isWeaponId(id) && s.slots.some((w) => w?.defId === id);
-        const kind = def.kind === 'boon' ? 'Boon' : owned ? 'Weapon · owned' : 'Weapon · new';
-        return `<button data-offer="${i}" aria-pressed="${d.selected === i}" ${locked ? 'disabled' : ''}><span>${i + 1}. ${def.name}</span><span class="kind">${kind}</span></button>`;
-      })
-      .join('');
+    this.el['draw-count'].textContent = `Draw ${p.draw}`;
+    this.el['discard-count'].textContent = `Discard ${p.discard}`;
+    this.el.forecast.innerHTML = `<b>${t.turnIndex === 0 ? 'Prepare' : `Wave ${t.turnIndex} endured`}</b> · Next, wave ${t.nextWave + 1}: ${t.forecast}`;
+    (this.el.energy.querySelector('.pips') as HTMLElement).innerHTML = Array.from({ length: TURN.energyPerTurn }, (_, i) => `<i class="${i < t.energy ? 'lit' : ''}"></i>`).join('');
+    (this.el.energy.querySelector('.value') as HTMLElement).textContent = `${t.energy}/${TURN.energyPerTurn}`;
+    (this.el['btn-end-turn'] as HTMLButtonElement).disabled = !t.canEndTurn;
 
-    const shown: CardId | null = hoverId ?? (d.selected !== null ? d.offer[d.selected] : d.resolvedCard);
-    this.el['draft-detail'].innerHTML = shown ? detailHtml(shown, s.polishStacks) : `<div class="hint">Hover or select a card to read it. Every weapon fires from the vessel's shared emitter; sockets are interchangeable.</div>`;
-
-    // replacement comparison
-    if (d.stage === 'confirmReplace' && d.pendingSlot !== null && d.selected !== null) {
-      const old = s.slots[d.pendingSlot];
-      const neu = d.offer[d.selected] as WeaponId;
-      this.el['compare-slot'].innerHTML = old
-        ? `<div class="compare"><div class="old"><b>${WEAPONS[old.defId].name}</b>${WEAPONS[old.defId].interval.toFixed(1)}s · ${WEAPONS[old.defId].damage} dmg</div><div class="arrow">→</div><div class="new"><b>${WEAPONS[neu].name}</b>${WEAPONS[neu].interval.toFixed(1)}s · ${WEAPONS[neu].damage} dmg</div></div>`
-        : '';
-    } else this.el['compare-slot'].innerHTML = '';
-
-    // keyboard socket mirror
-    const placing = d.stage === 'placing';
-    this.el['socket-list'].classList.toggle('hidden', !placing);
-    if (placing) {
-      this.el['socket-list'].innerHTML = s.slots
-        .map((w, i) => `<button data-slot="${i}"><span>Socket ${i + 1}</span><span class="kind">${w ? `Replace ${WEAPONS[w.defId].name}` : 'Empty'}</span></button>`)
-        .join('');
+    // contextual action bar
+    const show = (id: string, on: boolean) => this.el[id].classList.toggle('hidden', !on);
+    let text = '';
+    show('btn-sacrifice', false);
+    show('btn-purge', false);
+    show('btn-clear', false);
+    show('btn-replace', false);
+    show('btn-cancel', false);
+    if (t.stage === 'sacrificeChoice') text = 'Choose what rises from the ashes.';
+    else if (t.stage === 'confirmReplace' && t.replace) {
+      text = `Replace ${t.replace.from} with ${t.replace.to}? The old tower is destroyed.`;
+      show('btn-replace', true);
+      show('btn-cancel', true);
+    } else if (t.stage === 'targeting') {
+      text = t.selectedIsTower ? `Place ${t.selectedName}: click an open socket.` : `${t.selectedName}: click a placed tower.`;
+      show('btn-cancel', true);
+    } else if (t.marked === 2) {
+      text = 'Two cards marked.';
+      show('btn-sacrifice', true);
+      show('btn-clear', true);
+    } else if (t.marked === 1) {
+      text = t.purgesLeft > 0 ? 'Mark one more to sacrifice, or purge this card from your deck.' : 'Mark one more to sacrifice (purge already used this turn).';
+      show('btn-purge', t.purgesLeft > 0);
+      show('btn-clear', true);
     }
-
-    const isBoon = d.selected !== null && !isWeaponId(d.offer[d.selected]);
-    this.el['btn-use'].classList.toggle('hidden', !(d.stage === 'boonSelected' && isBoon));
-    this.el['btn-replace'].classList.toggle('hidden', d.stage !== 'confirmReplace');
-    this.el['btn-cancel'].classList.toggle('hidden', !(d.stage === 'placing' || d.stage === 'confirmReplace' || d.stage === 'boonSelected'));
-    (this.el['btn-continue'] as HTMLButtonElement).disabled = d.stage !== 'resolved' || s.suspended;
-
-    const hints: Record<DraftStage, string> = {
-      choosing: 'Drag a weapon card into any socket, or click it and then click a socket. Boons are used, not socketed.',
-      boonSelected: 'Press Use to apply this boon. It does not take a socket.',
-      placing: 'Click a socket on the vessel (or a socket button). Occupied sockets ask before replacing. Esc returns the card.',
-      confirmReplace: 'The current weapon stays installed until you press Replace.',
-      settling: 'Seating the memory…',
-      resolved: 'Your build is set. Press Continue when ready — the trial resumes exactly where it froze.',
-    };
-    this.el['draft-hint'].textContent = hints[d.stage];
-    if (d.stage === 'resolved') setTimeout(() => (this.el['btn-continue'] as HTMLButtonElement).focus({ preventScroll: true }), 0);
+    this.el['action-text'].textContent = text;
+    this.el['action-bar'].classList.toggle('hidden', !text || s.suspended);
+    const bottom = p.cardH * 1.25 + 18;
+    this.el['action-bar'].style.bottom = `${bottom}px`;
   }
 
-  private updateInspect(s: HudState): void {
-    const show = !!this.hoverCard && this.hoverCard.slot !== null && (s.phase === 'COMBAT' || s.phase === 'CLEARING' || s.phase === 'PAUSED' || s.phase === 'DRAFT' || s.phase === 'PLACEMENT');
-    this.el.inspect.classList.toggle('hidden', !show);
-    if (show && this.hoverCard) {
-      const charge = this.hoverCard.slot !== null ? s.slots[this.hoverCard.slot]?.charge ?? 0 : 0;
-      const extra = `<dl><dt>Socket</dt><dd>${(this.hoverCard.slot ?? 0) + 1} (no effect on combat)</dd><dt>Charge</dt><dd>${Math.round(charge * 100)}%</dd></dl>`;
-      this.el.inspect.innerHTML = detailHtml(this.hoverCard.id, s.polishStacks, extra);
-      const drafting = s.phase === 'DRAFT' || s.phase === 'PLACEMENT';
-      this.el.inspect.style.left = '14px';
-      this.el.inspect.style.right = drafting ? 'auto' : 'auto';
-    }
+  /** Position an element centred on x (clamped to the viewport) with its bottom at y. */
+  private place(el: HTMLElement, x: number, y: number): void {
+    const half = (el.offsetWidth || 0) / 2;
+    const W = this.root.clientWidth || window.innerWidth;
+    el.style.left = `${Math.round(Math.max(half + 6, Math.min(W - half - 6, x)))}px`;
+    el.style.top = `${Math.round(y)}px`;
   }
 
   dispose(): void {

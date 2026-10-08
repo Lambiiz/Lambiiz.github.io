@@ -23,6 +23,7 @@ uniform float uPulse;
 uniform float uTime;
 uniform float uSelect;
 uniform float uDim;
+uniform float uShade;
 uniform vec2 uSize;
 uniform float uRadius;
 uniform vec3 uTint;
@@ -80,7 +81,9 @@ void main() {
   emissive += uSelectColor * ring * 1.6;
   a = max(a, ring * 0.6);
 
-  gl_FragColor = vec4((color + emissive) * uDim, a);
+  // optional darkening (unaffordable cards in hand): premultiplied black over the face
+  float shade = uShade * inside * (1.0 - a);
+  gl_FragColor = vec4((color + emissive) * uDim, a + shade);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -93,6 +96,7 @@ export interface ChargeUniforms {
   uTime: { value: number };
   uSelect: { value: number };
   uDim: { value: number };
+  uShade: { value: number };
   uSize: { value: THREE.Vector2 };
   uRadius: { value: number };
   uTint: { value: THREE.Color };
@@ -107,6 +111,7 @@ export function createChargeMaterial(width: number, height: number): THREE.Shade
     uTime: { value: 0 },
     uSelect: { value: 0 },
     uDim: { value: 1 },
+    uShade: { value: 0 },
     uSize: { value: new THREE.Vector2(width, height) },
     uRadius: { value: 0.16 },
     uTint: { value: new THREE.Color(0x2fa59c) }, // deep turquoise: ink stays dark under the tint

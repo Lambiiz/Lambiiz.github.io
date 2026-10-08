@@ -3,7 +3,7 @@
 // dotted arcs, quarter rosettes) repeats across cards, the board rim and the Base lid.
 import * as THREE from 'three';
 import { cardDef, WEAPONS } from '../game/content';
-import type { CardId } from '../game/types';
+import type { CardId, CardType } from '../game/types';
 
 export const INK = '#1b2234';
 export const INK_SOFT = 'rgba(27,34,52,0.55)';
@@ -47,13 +47,6 @@ export function colorTexture(canvas: HTMLCanvasElement, renderer?: THREE.WebGLRe
   t.generateMipmaps = true;
   t.minFilter = THREE.LinearMipmapLinearFilter;
   t.magFilter = THREE.LinearFilter;
-  t.needsUpdate = true;
-  return t;
-}
-
-export function dataTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
-  const t = new THREE.CanvasTexture(canvas);
-  t.colorSpace = THREE.NoColorSpace; // masks/roughness are data
   t.needsUpdate = true;
   return t;
 }
@@ -134,27 +127,6 @@ export function lozenge(ctx: Ctx, x: number, y: number, s: number, color: string
   ctx.beginPath();
   ctx.arc(x, y, s * 0.18, 0, Math.PI * 2);
   ctx.fill();
-  ctx.restore();
-}
-
-function quarterRosette(ctx: Ctx, x: number, y: number, s: number, rot: number, color: string): void {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(rot);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.6;
-  for (let i = 1; i <= 3; i++) {
-    ctx.beginPath();
-    ctx.arc(0, 0, (s * i) / 3, 0, Math.PI / 2);
-    ctx.stroke();
-  }
-  for (let i = 0; i <= 4; i++) {
-    const a = (i / 4) * (Math.PI / 2);
-    ctx.beginPath();
-    ctx.moveTo(Math.cos(a) * s * 0.33, Math.sin(a) * s * 0.33);
-    ctx.lineTo(Math.cos(a) * s, Math.sin(a) * s);
-    ctx.stroke();
-  }
   ctx.restore();
 }
 
@@ -614,6 +586,146 @@ function illusMend(ctx: Ctx): void {
   ctx.restore();
 }
 
+function illusAsh(ctx: Ctx): void {
+  // a tipped funerary urn pouring a fan of ash and embers
+  ctx.save();
+  ctx.translate(-70, -60);
+  ctx.rotate(-0.7);
+  ctx.beginPath();
+  ctx.moveTo(-50, -80);
+  ctx.bezierCurveTo(-90, -40, -95, 40, -45, 80);
+  ctx.lineTo(45, 80);
+  ctx.bezierCurveTo(95, 40, 90, -40, 50, -80);
+  ctx.closePath();
+  ctx.fillStyle = ENAMEL;
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.fillStyle = BRASS;
+  ctx.fillRect(-70, -20, 140, 14);
+  ctx.fillRect(-60, 30, 120, 10);
+  ctx.beginPath();
+  ctx.ellipse(0, -84, 54, 14, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#2a2014';
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  const rnd = grainRng(77);
+  for (let i = 0; i < 120; i++) {
+    const a = -0.2 + rnd() * 1.4;
+    const r = 40 + rnd() * 190;
+    const x = -10 + Math.cos(a) * r;
+    const y = -40 + Math.sin(a) * r * 0.9 + r * 0.25;
+    ctx.beginPath();
+    ctx.arc(x, y, 2 + rnd() * 6, 0, Math.PI * 2);
+    ctx.fillStyle = rnd() < 0.18 ? CORAL : rnd() < 0.5 ? '#4a4038' : '#8a7c6a';
+    ctx.fill();
+  }
+}
+
+function illusQuicken(ctx: Ctx): void {
+  // an hourglass whose sand hangs in the air
+  ctx.lineWidth = 7;
+  ctx.strokeStyle = INK;
+  ctx.fillStyle = BRASS;
+  ctx.fillRect(-110, -170, 220, 22);
+  ctx.strokeRect(-110, -170, 220, 22);
+  ctx.fillRect(-110, 148, 220, 22);
+  ctx.strokeRect(-110, 148, 220, 22);
+  ctx.beginPath();
+  ctx.moveTo(-85, -148);
+  ctx.bezierCurveTo(-85, -40, -14, -20, -14, 0);
+  ctx.bezierCurveTo(-14, 20, -85, 40, -85, 148);
+  ctx.lineTo(85, 148);
+  ctx.bezierCurveTo(85, 40, 14, 20, 14, 0);
+  ctx.bezierCurveTo(14, -20, 85, -40, 85, -148);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(160,200,195,0.35)';
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-70, -120);
+  ctx.lineTo(70, -120);
+  ctx.lineTo(10, -20);
+  ctx.lineTo(-10, -20);
+  ctx.closePath();
+  ctx.fillStyle = '#b89a5a';
+  ctx.fill();
+  const rnd = grainRng(5);
+  for (let i = 0; i < 26; i++) {
+    ctx.beginPath();
+    ctx.arc((rnd() - 0.5) * 40, 10 + i * 4.5, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = TURQ;
+    ctx.fill();
+  }
+  for (const x of [-120, 120]) {
+    ctx.beginPath();
+    ctx.moveTo(x, -148);
+    ctx.lineTo(x, 148);
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+  }
+}
+
+function illusHeavy(ctx: Ctx): void {
+  // an iron weight pressing a feather flat
+  ctx.beginPath();
+  ctx.moveTo(-120, 60);
+  ctx.lineTo(-80, -90);
+  ctx.lineTo(80, -90);
+  ctx.lineTo(120, 60);
+  ctx.closePath();
+  ctx.fillStyle = '#2b2b30';
+  ctx.fill();
+  ctx.lineWidth = 7;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.save();
+  ctx.clip();
+  hatch(ctx, 0.8, 9, 1.4, 'rgba(230,222,199,0.18)', [-130, -100, 260, 170]);
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(0, -120, 34, Math.PI, 0);
+  ctx.lineWidth = 14;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.fillStyle = IVORY;
+  ctx.font = `700 46px ${SERIF}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('XX', 0, -10);
+  // flattened feather
+  ctx.beginPath();
+  ctx.moveTo(-160, 90);
+  ctx.quadraticCurveTo(0, 60, 170, 92);
+  ctx.quadraticCurveTo(0, 112, -160, 90);
+  ctx.fillStyle = IVORY_DEEP;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  for (let x = -140; x < 160; x += 14) {
+    ctx.beginPath();
+    ctx.moveTo(x, 92);
+    ctx.lineTo(x + 10, 80 + ((x / 14) % 2) * 6);
+    ctx.stroke();
+  }
+  // downward pressure marks
+  ctx.strokeStyle = CORAL;
+  ctx.lineWidth = 5;
+  for (const x of [-150, 150]) {
+    ctx.beginPath();
+    ctx.moveTo(x, -80);
+    ctx.lineTo(x, 20);
+    ctx.lineTo(x - 12, 6);
+    ctx.moveTo(x, 20);
+    ctx.lineTo(x + 12, 6);
+    ctx.stroke();
+  }
+}
+
 const ILLUSTRATIONS: Record<CardId, (ctx: Ctx) => void> = {
   needle: illusNeedle,
   light: illusLight,
@@ -621,15 +733,72 @@ const ILLUSTRATIONS: Record<CardId, (ctx: Ctx) => void> = {
   bell: illusBell,
   polish: illusPolish,
   mend: illusMend,
+  ash: illusAsh,
+  quicken: illusQuicken,
+  heavy: illusHeavy,
 };
 
-/** Short pattern label shown on the card's lower band (full text lives in the DOM panel). */
-function statLine(id: CardId): string {
-  const d = cardDef(id);
-  if (d.kind === 'boon') return id === 'polish' ? '+15% DAMAGE' : '+20 INTEGRITY';
-  const w = WEAPONS[d.id];
-  const kind = { projectile: 'SINGLE', lance: 'HEAVY', chain: 'CHAIN ×3', pulse: 'RING' }[w.pattern];
-  return `${Math.round(w.damage)} · ${w.interval.toFixed(1)}s · ${kind}`;
+/** Muted type colours: towers dark blue, actives dark red, passives dark brown. */
+export const TYPE_COLORS: Record<CardType, { frame: string; band: string; text: string; label: string }> = {
+  tower: { frame: '#2f3d55', band: '#1d2638', text: '#d9d2bf', label: 'TOWER' },
+  active: { frame: '#5c2b28', band: '#3a1916', text: '#e2d4c0', label: 'ACTIVE' },
+  passive: { frame: '#54402a', band: '#33261a', text: '#e0d3bb', label: 'PASSIVE' },
+};
+
+function wrapText(ctx: Ctx, text: string, maxW: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let line = '';
+  for (const w of words) {
+    const t = line ? `${line} ${w}` : w;
+    if (ctx.measureText(t).width > maxW && line) {
+      lines.push(line);
+      line = w;
+    } else line = t;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/** Worn edge: random nicks along a rectangle's border, drawn in the background colour. */
+function wornEdges(ctx: Ctx, w: number, h: number, seed: number, color: string): void {
+  const rnd = grainRng(seed);
+  ctx.fillStyle = color;
+  for (let i = 0; i < 70; i++) {
+    const side = rnd() * 4;
+    const t = rnd();
+    const r = 2 + rnd() * 7;
+    const x = side < 1 ? t * w : side < 2 ? w - rnd() * 4 : side < 3 ? t * w : rnd() * 4;
+    const y = side < 1 ? rnd() * 4 : side < 2 ? t * h : side < 3 ? h - rnd() * 4 : t * h;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/**
+ * Printed-card finish: ordered-dither posterisation plus grain. Gives the cards a stamped,
+ * hand-printed texture instead of smooth digital gradients.
+ */
+function printFinish(c: HTMLCanvasElement, seed: number, levels = 9): void {
+  const ctx = c.getContext('2d')!;
+  const img = ctx.getImageData(0, 0, c.width, c.height);
+  const d = img.data;
+  const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  const rnd = grainRng(seed);
+  const step = 255 / (levels - 1);
+  for (let y = 0; y < c.height; y++)
+    for (let x = 0; x < c.width; x++) {
+      const i = (y * c.width + x) * 4;
+      if (d[i + 3] === 0) continue;
+      const th = (bayer[(y & 3) * 4 + (x & 3)] / 16 - 0.5) * step;
+      const g = (rnd() - 0.5) * 14;
+      for (let k = 0; k < 3; k++) {
+        const v = d[i + k] + th + g;
+        d[i + k] = Math.max(0, Math.min(255, Math.round(v / step) * step));
+      }
+    }
+  ctx.putImageData(img, 0, 0);
 }
 
 /** Draws one card face. Printed bottom is canvas bottom (UV y=0). */
@@ -638,76 +807,93 @@ export function drawCardFace(id: CardId): HTMLCanvasElement {
   const H = CARD_TEX_H;
   const [c, ctx] = makeCanvas(W, H);
   const def = cardDef(id);
-  const isBoon = def.kind === 'boon';
-  paperGround(ctx, W, H, id.charCodeAt(0) * 31 + id.length, isBoon ? '#e2dac8' : IVORY);
+  const tc = TYPE_COLORS[def.type];
+  const seed = id.charCodeAt(0) * 31 + id.length * 7;
 
-  // frame: outer brass rule, inner hairline, lozenge chain
-  ctx.lineWidth = 9;
-  ctx.strokeStyle = BRASS;
-  roundRectPath(ctx, 14, 14, W - 28, H - 28, 26);
-  ctx.stroke();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = INK;
-  roundRectPath(ctx, 30, 30, W - 60, H - 60, 16);
-  ctx.stroke();
-  roundRectPath(ctx, 38, 38, W - 76, H - 76, 12);
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  for (const [x, y, r] of [
-    [38, 38, 0],
-    [W - 38, 38, Math.PI / 2],
-    [W - 38, H - 38, Math.PI],
-    [38, H - 38, -Math.PI / 2],
-  ] as const) {
-    quarterRosette(ctx, x, y, 34, r, BRASS);
+  // frame in the type colour, with grime
+  ctx.fillStyle = tc.frame;
+  ctx.fillRect(0, 0, W, H);
+  const rnd = grainRng(seed);
+  for (let i = 0; i < 1800; i++) {
+    ctx.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.12)' : 'rgba(255,240,210,0.05)';
+    ctx.fillRect(rnd() * W, rnd() * H, 1 + rnd() * 4, 1 + rnd() * 3);
   }
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = 'rgba(10,8,6,0.75)';
+  roundRectPath(ctx, 22, 22, W - 44, H - 44, 18);
+  ctx.stroke();
 
-  // title band
-  const titleY = 108;
-  ctx.fillStyle = INK;
-  ctx.font = `700 60px ${SERIF}`;
+  // header band with the name and the cost pip
+  ctx.fillStyle = tc.band;
+  roundRectPath(ctx, 34, 34, W - 68, 96, 12);
+  ctx.fill();
+  ctx.fillStyle = tc.text;
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'alphabetic';
-  let size = 60;
-  while (ctx.measureText(def.name).width > W - 120 && size > 40) {
+  ctx.textBaseline = 'middle';
+  let size = 54;
+  ctx.font = `700 ${size}px ${SERIF}`;
+  while (ctx.measureText(def.name).width > W - 220 && size > 36) {
     size -= 2;
     ctx.font = `700 ${size}px ${SERIF}`;
   }
-  ctx.fillText(def.name, W / 2, titleY);
-  ctx.strokeStyle = BRASS;
-  ctx.lineWidth = 2;
+  ctx.fillText(def.name, W / 2 + 34, 84);
+  // cost pip: a wax seal with the energy cost
   ctx.beginPath();
-  ctx.moveTo(80, titleY + 20);
-  ctx.lineTo(W / 2 - 28, titleY + 20);
-  ctx.moveTo(W / 2 + 28, titleY + 20);
-  ctx.lineTo(W - 80, titleY + 20);
+  ctx.arc(86, 84, 42, 0, Math.PI * 2);
+  ctx.fillStyle = '#1a120c';
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = '#b09060';
   ctx.stroke();
-  soulGlyph(ctx, W / 2, titleY + 20, 14, isBoon ? CORAL : BRASS, 1.6);
+  ctx.fillStyle = '#f0dcae';
+  ctx.font = `800 54px ${SANS}`;
+  ctx.fillText(String(def.cost), 86, 87);
 
-  // illustration medallion area
+  // illustration on aged paper
+  const px = 46;
+  const py = 144;
+  const pw = W - 92;
+  const ph = 392;
   ctx.save();
-  ctx.translate(W / 2, 382);
-  ctx.scale(0.98, 0.98);
+  roundRectPath(ctx, px, py, pw, ph, 10);
+  ctx.clip();
+  paperGround(ctx, W, H, seed + 3, '#cfc3a2');
+  ctx.translate(W / 2, py + ph / 2);
+  ctx.scale(0.86, 0.86);
   ILLUSTRATIONS[id](ctx);
   ctx.restore();
-
-  // bottom band
-  const bandY = H - 150;
-  ctx.fillStyle = 'rgba(27,34,52,0.92)';
-  roundRectPath(ctx, 54, bandY, W - 108, 84, 12);
-  ctx.fill();
-  ctx.strokeStyle = BRASS_LIGHT;
-  ctx.lineWidth = 2;
-  roundRectPath(ctx, 60, bandY + 6, W - 120, 72, 9);
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = '#120d09';
+  roundRectPath(ctx, px, py, pw, ph, 10);
   ctx.stroke();
-  ctx.fillStyle = '#efe6cd';
-  ctx.font = `600 31px ${SANS}`;
+
+  // rules text box
+  const ty = py + ph + 14;
+  ctx.fillStyle = tc.band;
+  roundRectPath(ctx, 34, ty, W - 68, H - ty - 34, 12);
+  ctx.fill();
+  ctx.fillStyle = tc.text;
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(statLine(id), W / 2, bandY + 43);
-  ctx.fillStyle = INK_SOFT;
-  ctx.font = `600 18px ${SANS}`;
-  ctx.fillText(isBoon ? 'BOON · USED ONCE' : 'WEAPON · BASE EMITTER', W / 2, H - 46);
+  ctx.textBaseline = 'alphabetic';
+  if (def.type === 'tower') {
+    const w = WEAPONS[def.id];
+    const kind = { projectile: 'SINGLE', lance: 'HEAVY', chain: 'CHAIN ×3', pulse: 'RING' }[w.pattern];
+    ctx.font = `700 40px ${SANS}`;
+    ctx.fillText(`${w.damage} DMG · ${w.interval.toFixed(1)}s`, W / 2, ty + 62);
+    ctx.font = `600 30px ${SANS}`;
+    ctx.fillText(`RANGE ${w.range} · ${kind}`, W / 2, ty + 108);
+  } else {
+    ctx.font = `600 28px ${SANS}`;
+    const lines = wrapText(ctx, def.summary, W - 120).slice(0, 4);
+    lines.forEach((ln, i) => ctx.fillText(ln, W / 2, ty + 48 + i * 36));
+  }
+  ctx.font = `800 22px ${SANS}`;
+  ctx.globalAlpha = 0.75;
+  ctx.fillText(tc.label, W / 2, H - 50);
+  ctx.globalAlpha = 1;
+
+  wornEdges(ctx, W, H, seed + 9, 'rgba(255,240,210,0.07)');
+  printFinish(c, seed + 11);
   return c;
 }
 
@@ -733,153 +919,8 @@ export function drawCardBack(): HTMLCanvasElement {
   return c;
 }
 
-export function drawCardEdge(): HTMLCanvasElement {
-  // brass edge band with ivory core (paper stock visible on the card thickness)
-  const [c, ctx] = makeCanvas(64, 64);
-  ctx.fillStyle = '#c9b78a';
-  ctx.fillRect(0, 0, 64, 64);
-  ctx.fillStyle = '#efe6cf';
-  ctx.fillRect(0, 22, 64, 20);
-  return c;
-}
-
 // ---------------------------------------------------------------------------
 // Environment textures
-
-export function drawBoardTop(size = 2048): HTMLCanvasElement {
-  const [c, ctx] = makeCanvas(size, size);
-  const s = size / 2;
-  const rnd = grainRng(1234);
-  ctx.fillStyle = '#121a2a';
-  ctx.fillRect(0, 0, size, size);
-  // slate grain
-  for (let i = 0; i < 14000; i++) {
-    const x = rnd() * size;
-    const y = rnd() * size;
-    ctx.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.05)';
-    ctx.fillRect(x, y, 2 + rnd() * 3, 1 + rnd() * 2);
-  }
-  const g = ctx.createRadialGradient(s, s, s * 0.1, s, s, s);
-  g.addColorStop(0, 'rgba(40,60,90,0.35)');
-  g.addColorStop(0.7, 'rgba(20,28,45,0)');
-  g.addColorStop(1, 'rgba(0,0,0,0.35)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  ctx.translate(s, s);
-  const k = s / 10.6; // px per world unit
-  // low-contrast engraved rings (kept faint so approach paths stay clean)
-  ctx.strokeStyle = 'rgba(181,154,99,0.10)';
-  ctx.lineWidth = 2;
-  for (const r of [5.2, 6.85, 8.6]) {
-    ctx.beginPath();
-    ctx.arc(0, 0, r * k, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  // spawn ring hint: dotted
-  ctx.fillStyle = 'rgba(105,218,208,0.12)';
-  for (let i = 0; i < 180; i++) {
-    const a = (i / 180) * Math.PI * 2;
-    ctx.beginPath();
-    ctx.arc(Math.cos(a) * 9.5 * k, Math.sin(a) * 9.5 * k, 2.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // outer glyph band near the rim
-  for (let i = 0; i < 48; i++) {
-    const a = (i / 48) * Math.PI * 2;
-    const x = Math.cos(a) * 10.05 * k;
-    const y = Math.sin(a) * 10.05 * k;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(a + Math.PI / 2);
-    if (i % 4 === 0) soulGlyph(ctx, 0, 0, 13, 'rgba(181,154,99,0.32)', 1.6);
-    else lozenge(ctx, 0, 0, 7, 'rgba(181,154,99,0.22)', 1.2);
-    ctx.restore();
-  }
-  ctx.beginPath();
-  ctx.arc(0, 0, 10.4 * k, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(181,154,99,0.25)';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  return c;
-}
-
-export function drawRimBand(): HTMLCanvasElement {
-  const W = 2048;
-  const H = 128;
-  const [c, ctx] = makeCanvas(W, H);
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, '#d8c08a');
-  g.addColorStop(0.5, '#b59a63');
-  g.addColorStop(1, '#7d6538');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-  const rnd = grainRng(77);
-  for (let i = 0; i < 3000; i++) {
-    ctx.strokeStyle = rnd() < 0.5 ? 'rgba(255,240,200,0.10)' : 'rgba(60,40,10,0.10)';
-    ctx.lineWidth = 1;
-    const y = rnd() * H;
-    const x = rnd() * W;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + 20 + rnd() * 50, y);
-    ctx.stroke();
-  }
-  ctx.strokeStyle = 'rgba(40,28,10,0.7)';
-  ctx.lineWidth = 2;
-  for (const y of [14, H - 14]) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
-  }
-  for (let i = 0; i < 32; i++) {
-    const x = (i + 0.5) * (W / 32);
-    if (i % 2 === 0) soulGlyph(ctx, x, H / 2, 30, 'rgba(40,28,10,0.75)', 2.2);
-    else {
-      lozenge(ctx, x - 20, H / 2, 14, 'rgba(40,28,10,0.6)', 2);
-      lozenge(ctx, x + 20, H / 2, 14, 'rgba(40,28,10,0.6)', 2);
-    }
-  }
-  return c;
-}
-
-export function drawLidEnamel(w = 1560, h = 1400): HTMLCanvasElement {
-  // UV space: shape coords mapped to [0,1] over the 7.8 x 7.0 lid
-  const [c, ctx] = makeCanvas(w, h);
-  ctx.fillStyle = '#1a2846';
-  ctx.fillRect(0, 0, w, h);
-  const rnd = grainRng(5);
-  for (let i = 0; i < 9000; i++) {
-    ctx.fillStyle = rnd() < 0.5 ? 'rgba(120,160,220,0.035)' : 'rgba(0,0,0,0.05)';
-    ctx.fillRect(rnd() * w, rnd() * h, 2, 2);
-  }
-  // fine engraved guilloché lines
-  ctx.strokeStyle = 'rgba(181,154,99,0.16)';
-  ctx.lineWidth = 1.2;
-  for (let i = 0; i < 90; i++) {
-    ctx.beginPath();
-    for (let x = 0; x <= w; x += 8) {
-      const y = (i / 90) * h + Math.sin(x * 0.012 + i * 0.6) * 9;
-      if (x === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-  }
-  // border glyph chain
-  ctx.strokeStyle = 'rgba(213,189,132,0.55)';
-  ctx.lineWidth = 3;
-  roundRectPath(ctx, 26, 26, w - 52, h - 52, 30);
-  ctx.stroke();
-  for (let x = 70; x < w - 50; x += 46) {
-    lozenge(ctx, x, 46, 9, 'rgba(213,189,132,0.45)', 1.4);
-    lozenge(ctx, x, h - 46, 9, 'rgba(213,189,132,0.45)', 1.4);
-  }
-  for (let y = 80; y < h - 60; y += 46) {
-    lozenge(ctx, 46, y, 9, 'rgba(213,189,132,0.45)', 1.4);
-    lozenge(ctx, w - 46, y, 9, 'rgba(213,189,132,0.45)', 1.4);
-  }
-  return c;
-}
 
 /** Engraved brass name-plate for the ceramic body (glyph chain between soul glyphs). */
 export function drawMedallion(): HTMLCanvasElement {
@@ -938,33 +979,6 @@ export function drawSocketFloor(): HTMLCanvasElement {
   o2.addColorStop(1, 'rgba(0,0,0,0.6)');
   ctx.fillStyle = o2;
   ctx.fillRect(0, 0, 256, 340);
-  return c;
-}
-
-export function drawCeramic(): HTMLCanvasElement {
-  const [c, ctx] = makeCanvas(512, 512);
-  ctx.fillStyle = '#d8d0b7';
-  ctx.fillRect(0, 0, 512, 512);
-  const rnd = grainRng(9);
-  for (let i = 0; i < 4000; i++) {
-    ctx.fillStyle = rnd() < 0.5 ? 'rgba(255,255,245,0.05)' : 'rgba(110,90,60,0.05)';
-    ctx.fillRect(rnd() * 512, rnd() * 512, 3, 3);
-  }
-  // faint crackle glaze
-  ctx.strokeStyle = 'rgba(90,70,40,0.12)';
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 70; i++) {
-    let x = rnd() * 512;
-    let y = rnd() * 512;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    for (let j = 0; j < 5; j++) {
-      x += (rnd() - 0.5) * 60;
-      y += (rnd() - 0.5) * 60;
-      ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-  }
   return c;
 }
 
@@ -1036,28 +1050,6 @@ export function drawMothWing(): HTMLCanvasElement {
   return c;
 }
 
-export function drawMaskFace(): HTMLCanvasElement {
-  const [c, ctx] = makeCanvas(256, 256);
-  ctx.fillStyle = '#e4dcc4';
-  ctx.fillRect(0, 0, 256, 256);
-  const rnd = grainRng(31);
-  ctx.strokeStyle = 'rgba(90,70,40,0.25)';
-  ctx.lineWidth = 1.2;
-  for (let i = 0; i < 12; i++) {
-    let x = rnd() * 256;
-    let y = rnd() * 256;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    for (let j = 0; j < 4; j++) {
-      x += (rnd() - 0.5) * 50;
-      y += (rnd() - 0.5) * 50;
-      ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-  }
-  return c;
-}
-
 export function drawRadial(inner: string, outer: string, size = 128): HTMLCanvasElement {
   const [c, ctx] = makeCanvas(size, size);
   const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
@@ -1068,21 +1060,267 @@ export function drawRadial(inner: string, outer: string, size = 128): HTMLCanvas
   return c;
 }
 
-export function drawVoid(): HTMLCanvasElement {
-  const [c, ctx] = makeCanvas(1024, 1024);
-  const g = ctx.createRadialGradient(512, 512, 40, 512, 512, 512);
-  g.addColorStop(0, '#16233a');
-  g.addColorStop(0.45, '#0b1322');
-  g.addColorStop(1, '#05080f');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 1024, 1024);
-  const rnd = grainRng(3);
-  ctx.strokeStyle = 'rgba(105,218,208,0.035)';
-  ctx.lineWidth = 2;
-  for (let r = 120; r < 512; r += 46 + rnd() * 30) {
+// ---------------------------------------------------------------------------
+// Tabletop (Inscryption-like wooden table, candle-lit, worn)
+
+/** Dark worn planks. Planks run along U; tile with RepeatWrapping. */
+export function drawWoodTable(size = 2048): HTMLCanvasElement {
+  const [c, ctx] = makeCanvas(size, size);
+  const rnd = grainRng(4242);
+  const planks = 6;
+  const ph = size / planks;
+  for (let p = 0; p < planks; p++) {
+    const y0 = p * ph;
+    const tone = 0.75 + rnd() * 0.35;
+    const base = [Math.round(58 * tone), Math.round(38 * tone), Math.round(24 * tone)];
+    ctx.fillStyle = `rgb(${base[0]},${base[1]},${base[2]})`;
+    ctx.fillRect(0, y0, size, ph);
+    // grain: long wavy lines
+    for (let g = 0; g < 70; g++) {
+      const gy = y0 + rnd() * ph;
+      const amp = 2 + rnd() * 8;
+      const freq = 0.002 + rnd() * 0.006;
+      const ph0 = rnd() * 10;
+      ctx.strokeStyle = rnd() < 0.6 ? `rgba(20,10,4,${0.12 + rnd() * 0.22})` : `rgba(150,105,60,${0.05 + rnd() * 0.08})`;
+      ctx.lineWidth = 0.8 + rnd() * 2.2;
+      ctx.beginPath();
+      for (let x = 0; x <= size; x += 16) {
+        const yy = gy + Math.sin(x * freq + ph0) * amp + Math.sin(x * freq * 3.1 + ph0) * amp * 0.3;
+        if (x === 0) ctx.moveTo(x, yy);
+        else ctx.lineTo(x, yy);
+      }
+      ctx.stroke();
+    }
+    // knots
+    for (let k = 0; k < 2; k++) {
+      const kx = rnd() * size;
+      const ky = y0 + ph * (0.25 + rnd() * 0.5);
+      for (let r = 6; r < 34; r += 5) {
+        ctx.beginPath();
+        ctx.ellipse(kx, ky, r * 2.4, r * 0.8, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(15,8,3,${0.35 - r * 0.008})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.ellipse(kx, ky, 10, 4, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(10,5,2,0.7)';
+      ctx.fill();
+    }
+    // plank seam
+    ctx.fillStyle = 'rgba(5,2,0,0.85)';
+    ctx.fillRect(0, y0, size, 5);
+    ctx.fillStyle = 'rgba(120,80,45,0.12)';
+    ctx.fillRect(0, y0 + 5, size, 2);
+    // nails at the plank ends
+    for (const nx of [40, size - 40]) {
+      ctx.beginPath();
+      ctx.arc(nx, y0 + ph / 2, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a1612';
+      ctx.fill();
+    }
+  }
+  // scratches and wax drips
+  for (let i = 0; i < 260; i++) {
+    const x = rnd() * size;
+    const y = rnd() * size;
+    const l = 10 + rnd() * 60;
+    const a = rnd() * Math.PI;
+    ctx.strokeStyle = `rgba(170,130,90,${0.04 + rnd() * 0.08})`;
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(512, 512, r, 0, Math.PI * 2);
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l);
     ctx.stroke();
+  }
+  for (let i = 0; i < 14; i++) {
+    const x = rnd() * size;
+    const y = rnd() * size;
+    const r = 6 + rnd() * 18;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * (0.6 + rnd() * 0.5), rnd() * 3, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(200,180,140,${0.1 + rnd() * 0.12})`;
+    ctx.fill();
+  }
+  return c;
+}
+
+/**
+ * The arena: a large circle inked/burnt into the table with faint rune rings.
+ * Transparent outside the ink. `worldRadius` maps the canvas half-width to world units.
+ */
+export function drawArenaDecal(worldRadius: number, spawnRadius: number, size = 2048): HTMLCanvasElement {
+  const [c, ctx] = makeCanvas(size, size);
+  ctx.clearRect(0, 0, size, size);
+  const s = size / 2;
+  const k = s / (worldRadius + 1.5);
+  ctx.translate(s, s);
+  // soot inside the circle, darker toward the rim
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, worldRadius * k);
+  g.addColorStop(0, 'rgba(0,0,0,0.05)');
+  g.addColorStop(0.85, 'rgba(0,0,0,0.22)');
+  g.addColorStop(1, 'rgba(0,0,0,0.38)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0, 0, worldRadius * k, 0, Math.PI * 2);
+  ctx.fill();
+  // double inked rim
+  ctx.strokeStyle = 'rgba(12,6,2,0.85)';
+  ctx.lineWidth = 9;
+  ctx.beginPath();
+  ctx.arc(0, 0, worldRadius * k, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, 0, (worldRadius - 0.9) * k, 0, Math.PI * 2);
+  ctx.stroke();
+  // runes between the two rims
+  const rnd = grainRng(31);
+  const runes = 72;
+  for (let i = 0; i < runes; i++) {
+    const a = (i / runes) * Math.PI * 2;
+    const r = (worldRadius - 0.45) * k;
+    ctx.save();
+    ctx.translate(Math.cos(a) * r, Math.sin(a) * r);
+    ctx.rotate(a + Math.PI / 2);
+    ctx.strokeStyle = 'rgba(14,7,3,0.8)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    const n = 2 + Math.floor(rnd() * 3);
+    for (let j = 0; j < n; j++) {
+      const x0 = (rnd() - 0.5) * 18;
+      const y0 = (rnd() - 0.5) * 14;
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x0 + (rnd() - 0.5) * 18, y0 + (rnd() - 0.5) * 18);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  // faint range rings every 5 units (low contrast so approach paths stay clean)
+  ctx.strokeStyle = 'rgba(200,170,120,0.06)';
+  ctx.lineWidth = 2;
+  for (let r = 5; r < worldRadius - 1; r += 5) {
+    ctx.beginPath();
+    ctx.arc(0, 0, r * k, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // dotted spawn line
+  ctx.fillStyle = 'rgba(220,190,140,0.14)';
+  for (let i = 0; i < 260; i++) {
+    const a = (i / 260) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * spawnRadius * k, Math.sin(a) * spawnRadius * k, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  return c;
+}
+
+/** Brass cover plate with a padlock glyph for locked sockets. */
+export function drawLockCover(): HTMLCanvasElement {
+  const [c, ctx] = makeCanvas(256, 340);
+  const g = ctx.createLinearGradient(0, 0, 256, 340);
+  g.addColorStop(0, '#8a6e3e');
+  g.addColorStop(0.5, '#6e5530');
+  g.addColorStop(1, '#4a381e');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 340);
+  const rnd = grainRng(8);
+  for (let i = 0; i < 900; i++) {
+    ctx.strokeStyle = rnd() < 0.5 ? 'rgba(255,230,180,0.08)' : 'rgba(30,20,8,0.12)';
+    const y = rnd() * 340;
+    const x = rnd() * 256;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 20 + rnd() * 40, y);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(25,15,5,0.8)';
+  ctx.lineWidth = 6;
+  roundRectPath(ctx, 14, 14, 228, 312, 14);
+  ctx.stroke();
+  for (const [x, y] of [
+    [30, 30],
+    [226, 30],
+    [30, 310],
+    [226, 310],
+  ]) {
+    ctx.beginPath();
+    ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#2a1e10';
+    ctx.fill();
+  }
+  // padlock
+  ctx.lineWidth = 14;
+  ctx.strokeStyle = '#1e150a';
+  ctx.beginPath();
+  ctx.arc(128, 150, 34, Math.PI, 0);
+  ctx.stroke();
+  ctx.fillStyle = '#1e150a';
+  roundRectPath(ctx, 78, 150, 100, 82, 10);
+  ctx.fill();
+  ctx.fillStyle = '#8a6e3e';
+  ctx.beginPath();
+  ctx.arc(128, 182, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(124, 186, 8, 22);
+  printFinish(c, 99, 10);
+  return c;
+}
+
+/** Bone/ivory game-piece material with fine grain. */
+export function drawBone(): HTMLCanvasElement {
+  const [c, ctx] = makeCanvas(256, 256);
+  ctx.fillStyle = '#d8ccb0';
+  ctx.fillRect(0, 0, 256, 256);
+  const rnd = grainRng(66);
+  for (let i = 0; i < 400; i++) {
+    ctx.strokeStyle = rnd() < 0.5 ? 'rgba(90,70,40,0.12)' : 'rgba(255,250,235,0.12)';
+    const x = rnd() * 256;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x + (rnd() - 0.5) * 30, 256);
+    ctx.stroke();
+  }
+  return c;
+}
+
+/** Dark stained wood for the Base box and piece bases. */
+export function drawDarkWood(): HTMLCanvasElement {
+  const [c, ctx] = makeCanvas(512, 512);
+  ctx.fillStyle = '#2a1a10';
+  ctx.fillRect(0, 0, 512, 512);
+  const rnd = grainRng(91);
+  for (let g = 0; g < 90; g++) {
+    const gy = rnd() * 512;
+    ctx.strokeStyle = rnd() < 0.6 ? `rgba(10,5,2,${0.2 + rnd() * 0.3})` : `rgba(120,80,45,${0.06 + rnd() * 0.08})`;
+    ctx.lineWidth = 1 + rnd() * 2;
+    ctx.beginPath();
+    for (let x = 0; x <= 512; x += 16) {
+      const yy = gy + Math.sin(x * 0.01 + g) * 4;
+      if (x === 0) ctx.moveTo(x, yy);
+      else ctx.lineTo(x, yy);
+    }
+    ctx.stroke();
+  }
+  return c;
+}
+
+/** Bone die face (five pips) for table clutter. */
+export function drawDie(): HTMLCanvasElement {
+  const [c, ctx] = makeCanvas(128, 128);
+  ctx.fillStyle = '#cbbd9c';
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.fillStyle = '#2a1a10';
+  for (const [x, y] of [
+    [32, 32],
+    [96, 32],
+    [64, 64],
+    [32, 96],
+    [96, 96],
+  ]) {
+    ctx.beginPath();
+    ctx.arc(x, y, 10, 0, Math.PI * 2);
+    ctx.fill();
   }
   return c;
 }

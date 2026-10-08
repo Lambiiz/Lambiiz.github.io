@@ -6,9 +6,12 @@ import type { ProjectileState, SimEvent, Vec2, WeaponId } from '../game/types';
 import { Rng } from '../game/rng';
 import { EMITTER_POS, LID_TOP } from '../view/layout';
 import { footprintGap } from '../game/simulation';
+import { WEAPONS } from '../game/content';
 import * as art from '../view/art';
 
 const hdr = (hex: number, k: number) => new THREE.Color(hex).multiplyScalar(k);
+
+const ASH_COLOR = hdr(0xd88a5a, 2.0);
 
 export const WEAPON_COLORS: Record<WeaponId, THREE.Color> = {
   needle: hdr(0x69dad0, 3.0),
@@ -170,10 +173,11 @@ void main() {
 }`;
 const ptFrag = /* glsl */ `
 varying vec4 vColor;
+uniform float uAlphaMul;
 void main() {
   vec2 c = gl_PointCoord - 0.5;
   float d = dot(c, c) * 4.0;
-  float a = (1.0 - d) * vColor.a;
+  float a = (1.0 - d) * vColor.a * uAlphaMul;
   if (a <= 0.003) discard;
   gl_FragColor = vec4(vColor.rgb * a, a);
 }`;
@@ -218,7 +222,7 @@ class ParticlePool {
     this.mat = new THREE.ShaderMaterial({
       vertexShader: ptVert,
       fragmentShader: ptFrag,
-      uniforms: { uScale: { value: 30 } },
+      uniforms: { uScale: { value: 30 }, uAlphaMul: { value: 1 } },
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -233,6 +237,10 @@ class ParticlePool {
 
   setScale(pxPerUnit: number): void {
     this.mat.uniforms.uScale.value = pxPerUnit;
+  }
+
+  setAlpha(a: number): void {
+    this.mat.uniforms.uAlphaMul.value = a;
   }
 
   emit(p: THREE.Vector3, vel: THREE.Vector3, color: THREE.Color, size: number, life: number, t: number, gravity = 0): void {
@@ -346,6 +354,17 @@ export class Effects {
   private particleScale = 1;
   private ambientDust = 260;
   stats = { ribbons: 0, rings: 0, particles: 0, shards: 0, dropped: 0 };
+  /** 1 during live combat; eases toward ~0.25 while frozen so lingering effects don't distract. */
+  private dim = 1;
+  private dimTarget = 1;
+
+  get dimLevel(): number {
+    return this.dim;
+  }
+
+  setFrozen(frozen: boolean): void {
+    this.dimTarget = frozen ? 0.22 : 1;
+  }
 
   constructor(renderer: THREE.WebGLRenderer, seed: number) {
     this.rng = new Rng(seed);
@@ -552,7 +571,7 @@ export class Effects {
       }
       case 'damaged': {
         const p = new THREE.Vector3(ev.x, 0.9, ev.z);
-        const c = WEAPON_COLORS[ev.source];
+        const c = ev.source === 'ash' ? ASH_COLOR : WEAPON_COLORS[ev.source];
         this.flash(p, c, ev.source === 'light' ? 1.3 : 0.7, ev.source === 'light' ? 0.12 : 0.08, t);
         this.burst(p, c, ev.source === 'needle' ? 5 : 7, 2.2, t, 0.08, 0.35, 3);
         break;
@@ -569,6 +588,27 @@ export class Effects {
         const p = new THREE.Vector3(ev.x, 0.6, ev.z);
         this.burst(p, hdr(0xe28174, 2.4), 16, 2.6, t, 0.12, 0.5, 1);
         this.flash(p, hdr(0xe28174, 2.0), 1.6, 0.14, t);
+        break;
+      }
+      case 'blast': {
+        const r = this.ring();
+        if (r) {
+          r.active = true;
+          r.born = t;
+          r.life = 0.6;
+          r.r0 = 1.5;
+          r.r1 = ev.radius;
+          r.presentation = false;
+          r.alpha = 1;
+          r.mat.uniforms.uColor.value.copy(ASH_COLOR);
+          r.mat.uniforms.uWidth.value = 0.05;
+          r.mesh.position.set(0, 0.08, 0);
+        }
+        for (let i = 0; i < 40; i++) {
+          const a = this.rng.next() * Math.PI * 2;
+          const rr = this.rng.range(2, ev.radius);
+          this.particles.emit(new THREE.Vector3(Math.cos(a) * rr, 0.3, Math.sin(a) * rr), new THREE.Vector3(0, this.rng.range(0.4, 1.4), 0), hdr(0x9a8a7a, 1.1), 0.16, 0.9, t, -0.2);
+        }
         break;
       }
       case 'projectileExpired': {
@@ -673,7 +713,7 @@ export class Effects {
       a.born = t;
       a.life = 0.42;
       a.r0 = 3.6;
-      a.r1 = 6.8;
+      a.r1 = WEAPONS.bell.pulseRadius ?? 8.5;
       a.presentation = false;
       a.alpha = 1;
       a.mat.uniforms.uColor.value.copy(WEAPON_COLORS.bell);
@@ -686,7 +726,7 @@ export class Effects {
       b.born = t + 0.06;
       b.life = 0.65;
       b.r0 = 3.4;
-      b.r1 = 5.6;
+      b.r1 = (WEAPONS.bell.pulseRadius ?? 8.5) * 0.8;
       b.presentation = false;
       b.alpha = 0.5;
       b.mat.uniforms.uColor.value.copy(hdr(0xf2d79a, 1.6));
@@ -731,6 +771,8 @@ export class Effects {
     const simDt = Math.max(0, simTime - this.lastSimTime);
     this.lastSimTime = simTime;
     this.presentTime += presentDt;
+    this.dim += (this.dimTarget - this.dim) * (1 - Math.exp(-presentDt * 8));
+    this.particles.setAlpha(this.dim);
 
     // ribbons
     let nr = 0;
@@ -750,7 +792,7 @@ export class Effects {
       r.mesh.visible = age >= 0;
       const k = Math.max(0, age) / r.life;
       const flick = r.flicker ? 0.75 + 0.25 * Math.sin(simTime * 90 + r.born * 13) : 1;
-      r.mat.uniforms.uAlpha.value = (1 - k) * (1 - k * 0.5) * flick;
+      r.mat.uniforms.uAlpha.value = (1 - k) * (1 - k * 0.5) * flick * (r.presentation ? 1 : this.dim);
       r.mat.uniforms.uHead.value = Math.min(1, Math.max(0, age) / r.revealTime) * 1.02;
       r.mat.uniforms.uColor.value.copy(r.color);
     }
@@ -774,7 +816,7 @@ export class Effects {
       const ease = 1 - Math.pow(1 - k, 2.4);
       const rad = r.r0 + (r.r1 - r.r0) * ease;
       r.mesh.scale.set(rad, 1, rad);
-      r.mat.uniforms.uAlpha.value = r.alpha * (1 - k) * Math.min(1, k * 8 + 0.2);
+      r.mat.uniforms.uAlpha.value = r.alpha * (1 - k) * Math.min(1, k * 8 + 0.2) * (r.presentation ? 1 : this.dim);
     }
     // lens contraction
     const lensAge = simTime - this.lensBorn;
@@ -801,7 +843,7 @@ export class Effects {
       const sz = f.size * (0.6 + 0.6 * k);
       m.compose(f.p, qCam, new THREE.Vector3(sz, sz, sz));
       this.flashes.setMatrixAt(nf, m);
-      this.flashes.setColorAt(nf, f.color.clone().multiplyScalar(1 - k));
+      this.flashes.setColorAt(nf, f.color.clone().multiplyScalar((1 - k) * this.dim));
       nf++;
     }
     this.flashes.count = nf;

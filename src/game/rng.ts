@@ -32,7 +32,7 @@ function hashString(s: string): number {
   return h >>> 0;
 }
 
-export function deriveStream(seed: number, name: 'offers' | 'spawns' | 'cosmetic'): Rng {
+export function deriveStream(seed: number, name: 'offers' | 'spawns' | 'cosmetic' | 'deck'): Rng {
   return new Rng((seed ^ hashString(name)) >>> 0);
 }
 

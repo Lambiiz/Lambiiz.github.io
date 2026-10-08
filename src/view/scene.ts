@@ -1,10 +1,13 @@
 // Renderer, camera, lights, environment and the post-processing chain.
-// Chain: RenderPass (half-float, MSAA) -> UnrealBloomPass (High only) -> OutputPass (always: tone map + sRGB once).
+// Chain: RenderPass world (half-float, MSAA) -> RenderPass hand overlay (depth cleared, so nothing in
+// the world can cover the cards) -> UnrealBloomPass (High only) -> OutputPass (tone map + sRGB once)
+// -> StylizePass (display-space print finish: soft posterize, ordered dither, grain, vignette).
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { PALETTE, QUALITY, type QualityLevel, type QualitySettings } from './quality';
 
@@ -22,9 +25,58 @@ interface Frustum {
   bottom: number;
 }
 
-const ELEVATION = THREE.MathUtils.degToRad(57);
-const AZIMUTH = THREE.MathUtils.degToRad(9);
-const CAMERA_DISTANCE = 60;
+const ELEVATION = THREE.MathUtils.degToRad(58);
+const AZIMUTH = 0; // square to the screen: no dutch angle
+const CAMERA_DISTANCE = 90;
+const MAX_ZOOM = 3.2;
+
+/** Display-space stylization: gives the render a printed, gritty finish (Inscryption-like). */
+const StylizeShader = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    uResolution: { value: new THREE.Vector2(1, 1) },
+    uTime: { value: 0 },
+    uStrength: { value: 1 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform vec2 uResolution;
+    uniform float uTime;
+    uniform float uStrength;
+    varying vec2 vUv;
+    float bayer(vec2 p) {
+      int x = int(mod(p.x, 4.0));
+      int y = int(mod(p.y, 4.0));
+      int i = x + y * 4;
+      float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+      return m[i] / 16.0 - 0.5;
+    }
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main() {
+      vec2 c = vUv - 0.5;
+      float ca = 0.0012 * uStrength * dot(c, c) * 4.0;
+      vec3 col;
+      col.r = texture2D(tDiffuse, vUv + c * ca).r;
+      col.g = texture2D(tDiffuse, vUv).g;
+      col.b = texture2D(tDiffuse, vUv - c * ca).b;
+      // gritty afterlife grade: slightly desaturated, warm shadows
+      float l = dot(col, vec3(0.299, 0.587, 0.114));
+      col = mix(col, vec3(l), 0.18 * uStrength);
+      col *= mix(vec3(1.0), vec3(1.04, 0.98, 0.9), uStrength);
+      // soft posterize with ordered dither (printed look)
+      float levels = 28.0;
+      vec2 px = vUv * uResolution;
+      col = floor(col * levels + 0.5 + bayer(px) * 0.9 * uStrength) / levels;
+      // film grain + vignette
+      col += (hash(px + uTime * 61.0) - 0.5) * 0.045 * uStrength;
+      float v = smoothstep(0.95, 0.3, length(c * vec2(1.0, 1.15)));
+      col *= mix(1.0, 0.55 + 0.45 * v, uStrength);
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+    }`,
+};
 
 export class SceneRig {
   readonly renderer: THREE.WebGLRenderer;
@@ -33,6 +85,10 @@ export class SceneRig {
   readonly composer: EffectComposer;
   readonly bloom: UnrealBloomPass;
   readonly output: OutputPass;
+  readonly stylize: ShaderPass;
+  private handPass: RenderPass | null = null;
+  private zoom = 1;
+  private pan = new THREE.Vector2();
   readonly sun: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
   quality: QualityLevel = 'high';
@@ -56,7 +112,7 @@ export class SceneRig {
   private camRight = new THREE.Vector3();
   private camUp = new THREE.Vector3();
   private camPos = new THREE.Vector3();
-  private baseLightIntensity = 2.1;
+  private baseLightIntensity = 1.5;
   private dimTarget = 1;
   private dim = 1;
 
@@ -81,9 +137,9 @@ export class SceneRig {
     room.dispose();
     pmrem.dispose();
     this.scene.environment = this.envTarget.texture;
-    this.scene.environmentIntensity = 0.32;
+    this.scene.environmentIntensity = 0.18;
 
-    this.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 1, 140);
+    this.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 1, 220);
     const dir = new THREE.Vector3(Math.sin(AZIMUTH) * Math.cos(ELEVATION), Math.sin(ELEVATION), Math.cos(AZIMUTH) * Math.cos(ELEVATION));
     this.camera.position.copy(dir.multiplyScalar(CAMERA_DISTANCE));
     this.camera.lookAt(0, 0, 0);
@@ -92,11 +148,12 @@ export class SceneRig {
     this.camUp.setFromMatrixColumn(this.camera.matrixWorld, 1);
     this.camPos.copy(this.camera.position);
 
-    this.hemi = new THREE.HemisphereLight(0x8fa3c8, 0x2a1f18, 0.55);
+    // candle-lit tabletop: warm key, dim cool fill, deep falloff toward the table edges
+    this.hemi = new THREE.HemisphereLight(0x7a86a2, 0x2a1a10, 0.6);
     this.scene.add(this.hemi);
 
-    this.sun = new THREE.DirectionalLight(0xfff1dc, this.baseLightIntensity);
-    this.sun.position.set(-7, 16, 9);
+    this.sun = new THREE.DirectionalLight(0xffd9a8, this.baseLightIntensity);
+    this.sun.position.set(-8, 18, 7);
     this.sun.target.position.set(0, 0, 0);
     this.sun.castShadow = true;
     const sc = this.sun.shadow.camera;
@@ -111,9 +168,14 @@ export class SceneRig {
     this.sun.shadow.radius = 3;
     this.scene.add(this.sun, this.sun.target);
 
-    const rim = new THREE.DirectionalLight(0x6fb8d6, 0.5);
-    rim.position.set(8, 6, -12);
+    const rim = new THREE.DirectionalLight(0x6f8fb6, 0.35);
+    rim.position.set(10, 8, -14);
     this.scene.add(rim);
+    // warm pool of light over the arena, falling off toward the table edges
+    const pool = new THREE.SpotLight(0xffc98a, 1100, 140, 0.74, 0.65, 1.3);
+    pool.position.set(0, 60, 8);
+    pool.target.position.set(0, 0, 0);
+    this.scene.add(pool, pool.target);
 
     this.renderTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
     this.renderTarget.texture.name = 'palimpsest.hdr';
@@ -123,8 +185,19 @@ export class SceneRig {
     this.composer.addPass(this.bloom);
     this.output = new OutputPass();
     this.composer.addPass(this.output);
+    this.stylize = new ShaderPass(StylizeShader);
+    this.composer.addPass(this.stylize);
 
     this.applyQuality('high');
+  }
+
+  /** Render the hand overlay scene after the world, with depth cleared, before bloom/output. */
+  setHandOverlay(scene: THREE.Scene, camera: THREE.Camera): void {
+    const pass = new RenderPass(scene, camera);
+    pass.clear = false;
+    pass.clearDepth = true;
+    this.composer.insertPass(pass, 1);
+    this.handPass = pass;
   }
 
   applyQuality(level: QualityLevel): void {
@@ -132,6 +205,7 @@ export class SceneRig {
     this.settings = QUALITY[level];
     this.bloom.enabled = this.settings.bloom;
     this.bloom.strength = this.settings.bloomStrength;
+    this.stylize.uniforms.uStrength.value = level === 'high' ? 1 : 0.6;
     const shadowSize = this.settings.shadowMapSize;
     if (this.sun.shadow.mapSize.x !== shadowSize) {
       this.sun.shadow.mapSize.set(shadowSize, shadowSize);
@@ -161,6 +235,7 @@ export class SceneRig {
     this.renderer.setSize(this.width, this.height, false);
     this.composer.setPixelRatio(dpr);
     this.composer.setSize(this.width, this.height);
+    this.stylize.uniforms.uResolution.value.set(this.width * dpr, this.height * dpr);
     this.refit(true);
   }
 
@@ -232,8 +307,52 @@ export class SceneRig {
     };
   }
 
-  private applyFrustum(): void {
+  /** Player zoom toward a screen point (CSS px). Never changed automatically. */
+  zoomAt(px: number, py: number, factor: number): void {
     const f = this.currentFrustum();
+    const before = this.viewPoint(f, px, py);
+    this.zoom = THREE.MathUtils.clamp(this.zoom * factor, 1, MAX_ZOOM);
+    const after = this.viewPoint(f, px, py);
+    this.pan.x += before.x - after.x;
+    this.pan.y += before.y - after.y;
+    this.clampPan(f);
+    this.applyFrustum();
+  }
+
+  resetZoom(): void {
+    this.zoom = 1;
+    this.pan.set(0, 0);
+    this.applyFrustum();
+  }
+
+  get zoomLevel(): number {
+    return this.zoom;
+  }
+
+  private zoomed(f: Frustum): Frustum {
+    const cx = (f.left + f.right) / 2 + this.pan.x;
+    const cy = (f.top + f.bottom) / 2 + this.pan.y;
+    const hw = (f.right - f.left) / 2 / this.zoom;
+    const hh = (f.top - f.bottom) / 2 / this.zoom;
+    return { left: cx - hw, right: cx + hw, top: cy + hh, bottom: cy - hh };
+  }
+
+  private viewPoint(f: Frustum, px: number, py: number): THREE.Vector2 {
+    const z = this.zoomed(f);
+    return new THREE.Vector2(z.left + (px / this.width) * (z.right - z.left), z.top - (py / this.height) * (z.top - z.bottom));
+  }
+
+  private clampPan(f: Frustum): void {
+    const hw = (f.right - f.left) / 2;
+    const hh = (f.top - f.bottom) / 2;
+    const mx = hw * (1 - 1 / this.zoom);
+    const my = hh * (1 - 1 / this.zoom);
+    this.pan.x = THREE.MathUtils.clamp(this.pan.x, -mx, mx);
+    this.pan.y = THREE.MathUtils.clamp(this.pan.y, -my, my);
+  }
+
+  private applyFrustum(): void {
+    const f = this.zoomed(this.currentFrustum());
     let ox = 0;
     let oy = 0;
     if (this.impulseAge < this.impulseDuration && !this.reducedMotion) {
@@ -264,6 +383,7 @@ export class SceneRig {
   }
 
   update(presentDt: number): void {
+    this.stylize.uniforms.uTime.value = (this.stylize.uniforms.uTime.value + presentDt) % 1000;
     if (this.frustumT < 1) this.frustumT = Math.min(1, this.frustumT + presentDt / 0.55);
     this.impulseAge += presentDt;
     this.applyFrustum();
@@ -288,6 +408,8 @@ export class SceneRig {
     this.envTarget.dispose();
     this.bloom.dispose();
     this.output.dispose();
+    this.stylize.dispose();
+    this.handPass?.dispose();
     this.sun.shadow.map?.dispose();
     this.renderer.dispose();
   }

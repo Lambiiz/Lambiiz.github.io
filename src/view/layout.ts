@@ -1,8 +1,9 @@
 // Shared physical layout of the Base and cards (presentation only — combat never reads this).
 import { BASE, SLOT_COUNT } from '../game/content';
 
-export const CARD_W = 2.04;
-export const CARD_H = 2.72;
+// Scaled up 1.3x from the first slice so socketed cards stay readable in the zoomed-out swarm view.
+export const CARD_W = 2.65;
+export const CARD_H = 3.54;
 export const CARD_T = 0.06;
 export const HOLE_W = CARD_W + 0.1;
 export const HOLE_H = CARD_H + 0.1;
@@ -29,13 +30,3 @@ export function socketCenter(slot: number): { x: number; z: number } {
 }
 
 export const EMITTER_POS = { x: 0, y: LID_TOP + 0.36, z: 0 };
-
-export const TRAY = {
-  y: 1.55,
-  z: 8.3,
-  spacing: 3.2,
-  scale: 1.32,
-  tilt: -0.62, // radians about X: faces lean toward the camera
-};
-
-export const STACK_POS = { x: -11.9, y: 0.1, z: 3.4 };

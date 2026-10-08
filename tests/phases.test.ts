@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { TRIALS, WEAPON_IDS, isWeaponId } from '../src/game/content';
+import { cardDef, isWeaponId, SLOTS_UNLOCKED_AT_START, STARTING_DECK, TRIALS, TURN, WEAPONS } from '../src/game/content';
 import { FixedStepClock } from '../src/game/clock';
-import { generateOffer } from '../src/game/draft';
-import { PhaseController, SETTLE_SECONDS } from '../src/game/phases';
-import { deriveStream, Rng } from '../src/game/rng';
-import type { TrialDef, WeaponId } from '../src/game/types';
+import { PhaseController } from '../src/game/phases';
+import type { CardId, TrialDef } from '../src/game/types';
 
 const SHORT: TrialDef[] = TRIALS.map((t) => ({ ...t, durationSeconds: 3 }));
+const [OPEN_A, OPEN_B] = SLOTS_UNLOCKED_AT_START;
+const LOCKED = [0, 1, 2, 3, 4, 5].find((i) => !SLOTS_UNLOCKED_AT_START.includes(i))!;
 
 function runUntilFrozen(c: PhaseController, maxTicks = 100000) {
   for (let i = 0; i < maxTicks && c.isRunning(); i++) {
@@ -16,284 +16,256 @@ function runUntilFrozen(c: PhaseController, maxTicks = 100000) {
   }
 }
 
-function settle(c: PhaseController) {
-  c.updatePresentation(SETTLE_SECONDS + 0.01);
-}
-
-function toDraft(seed = 5, trials = SHORT) {
-  const c = new PhaseController(seed, { trials });
+function newRun(seed = 5, opts: { trials?: TrialDef[]; deck?: CardId[] } = {}) {
+  const c = new PhaseController(seed, { trials: opts.trials ?? SHORT, deck: opts.deck });
   c.startRun(seed);
-  runUntilFrozen(c);
   return c;
 }
 
-function firstWeaponIndex(c: PhaseController) {
-  return c.draft!.offer.findIndex((id) => isWeaponId(id));
-}
+const handIds = (c: PhaseController) => c.deck.hand.map((x) => x.defId);
+const uidOf = (c: PhaseController, id: CardId) => c.deck.hand.find((x) => x.defId === id)!.uid;
+const towerUid = (c: PhaseController) => c.deck.hand.find((x) => isWeaponId(x.defId))!.uid;
 
 function snapshot(c: PhaseController) {
   const s = c.sim;
-  return JSON.stringify({
-    t: s.simTime,
-    tick: s.tick,
-    e: s.enemies,
-    p: s.projectiles,
-    sp: s.spawnProgress,
-    w: s.slots,
-    hp: s.baseHp,
-  });
+  return JSON.stringify({ t: s.simTime, e: s.enemies, p: s.projectiles, sp: s.spawnProgress, w: s.slots, hp: s.baseHp });
 }
 
-describe('phase controller', () => {
-  it('starts with one Memory Needle and five empty sockets', () => {
-    const c = new PhaseController(1);
-    expect(c.phase).toBe('TITLE');
-    c.startRun(1);
+describe('turn loop', () => {
+  it('a run opens with a turn: 4 cards including the tower, 6 energy, empty sockets', () => {
+    for (let seed = 1; seed < 60; seed++) {
+      const c = newRun(seed);
+      expect(c.phase).toBe('TURN');
+      expect(c.turn!.turnIndex).toBe(0);
+      expect(c.turn!.energy).toBe(TURN.energyPerTurn);
+      expect(c.deck.hand.length).toBe(TURN.handDraw);
+      expect(handIds(c)).toContain('needle');
+      expect(c.deck.size).toBe(STARTING_DECK.length);
+      expect(c.sim.slots.every((w) => w === null)).toBe(true);
+    }
+  });
+
+  it('placing a tower costs 3 and removes it from the deck cycle; locked sockets are refused', () => {
+    const c = newRun();
+    const t = towerUid(c);
+    expect(c.playCard(t, LOCKED)).toBe('locked');
+    expect(c.playCard(t)).toBe('needsTarget');
+    expect(c.turn!.stage).toBe('targeting');
+    expect(c.playCard(t, OPEN_A)).toBe('played');
+    expect(c.sim.slots[OPEN_A]!.defId).toBe('needle');
+    expect(c.turn!.energy).toBe(TURN.energyPerTurn - cardDef('needle').cost);
+    expect(c.deck.size).toBe(STARTING_DECK.length - 1);
+    expect(c.deck.inHand(t)).toBeUndefined();
+  });
+
+  it('energy limits play; unaffordable cards stay in hand', () => {
+    const deck: CardId[] = ['needle', 'light', 'thread', 'bell'];
+    const c = newRun(3, { deck });
+    const uids = c.deck.hand.map((x) => x.uid);
+    expect(c.playCard(uids[0], OPEN_A)).toBe('played');
+    expect(c.playCard(uids[1], OPEN_B)).toBe('played');
+    expect(c.turn!.energy).toBe(0);
+    expect(c.playCard(uids[2], OPEN_A)).toBe('noEnergy');
+    expect(c.deck.hand.length).toBe(2);
+  });
+
+  it('occupied socket: confirm Replace destroys the old tower; cancel keeps everything', () => {
+    const deck: CardId[] = ['needle', 'light', 'mend', 'mend'];
+    const c = newRun(4, { deck });
+    c.playCard(uidOf(c, 'needle'), OPEN_A);
+    const old = c.sim.slots[OPEN_A]!;
+    const light = uidOf(c, 'light');
+    expect(c.playCard(light, OPEN_A)).toBe('confirm');
+    expect(c.sim.slots[OPEN_A]).toBe(old);
+    expect(c.canEndTurn()).toBe(false);
+    c.cancel();
+    expect(c.turn!.stage).toBe('idle');
+    expect(c.deck.inHand(light)).toBeDefined();
+    expect(c.playCard(light, OPEN_A)).toBe('confirm');
+    expect(c.confirmReplace()).toBe(true);
+    expect(c.confirmReplace()).toBe(false);
+    expect(c.sim.slots[OPEN_A]!.defId).toBe('light');
+    expect(c.sim.slots[OPEN_A]!.elapsed).toBe(0);
+    // the destroyed needle is nowhere in the deck
+    const all = [...c.deck.drawPile, ...c.deck.hand, ...c.deck.discard].map((x) => x.defId);
+    expect(all).not.toContain('needle');
+    expect(c.turn!.energy).toBe(0);
+  });
+
+  it('actives and passives apply their effect and go to the discard pile', () => {
+    const deck: CardId[] = ['needle', 'mend', 'polish', 'heavy', 'ash', 'quicken'];
+    const c = newRun(6, { deck });
+    c.sim.baseHp = 50;
+    const hand = handIds(c);
+    for (const id of hand) {
+      if (id === 'needle') c.playCard(uidOf(c, id), OPEN_A);
+    }
+    for (const id of handIds(c)) {
+      const uid = uidOf(c, id);
+      if (id === 'quicken') {
+        if (c.sim.slots[OPEN_A]) {
+          expect(c.playCard(uid, OPEN_B)).toBe('invalid'); // empty socket is not a tower target
+          expect(c.playCard(uid, OPEN_A)).toBe('played');
+          expect(c.sim.slots[OPEN_A]!.elapsed).toBe(WEAPONS.needle.interval);
+        }
+      } else expect(c.playCard(uid)).toBe('played');
+    }
+    if (hand.includes('mend')) expect(c.sim.baseHp).toBe(60);
+    if (hand.includes('polish')) expect(c.sim.damageBonus).toBeCloseTo(0.15);
+    if (hand.includes('heavy')) expect(c.sim.speedFactor).toBeCloseTo(0.8);
+    if (hand.includes('ash')) expect(c.sim.pendingBlasts.length).toBe(1);
+    expect(c.deck.discard.length).toBeGreaterThan(0);
+  });
+
+  it('end turn discards the hand, combat freezes at the boundary, and the next turn draws 4', () => {
+    const c = newRun(8);
+    c.playCard(towerUid(c), OPEN_A);
+    const handBefore = c.deck.hand.length;
+    expect(c.endTurn()).toBe(true);
     expect(c.phase).toBe('COMBAT');
-    expect(c.sim.slots.filter(Boolean).length).toBe(1);
-    expect(c.sim.slots[0]!.defId).toBe('needle');
-    expect(c.sim.baseHp).toBe(100);
+    expect(c.deck.hand.length).toBe(0);
+    expect(c.deck.discard.length).toBe(handBefore);
+    expect(c.sim.trialIndex).toBe(0); // the opening turn precedes wave 1
+    runUntilFrozen(c);
+    expect(c.phase).toBe('TURN');
+    expect(c.turn!.turnIndex).toBe(1);
+    expect(c.deck.hand.length).toBe(TURN.handDraw);
+    expect(c.turn!.energy).toBe(TURN.energyPerTurn);
+    c.endTurn();
+    expect(c.sim.trialIndex).toBe(1);
   });
 
-  it('freezes exactly at the trial boundary and presents three distinct cards', () => {
-    const c = toDraft();
-    expect(c.phase).toBe('DRAFT');
-    expect(c.sim.trialTime).toBe(3);
-    expect(c.isRunning()).toBe(false);
-    const offer = c.draft!.offer;
-    expect(new Set(offer).size).toBe(3);
-    expect(offer.every((id) => isWeaponId(id))).toBe(true);
+  it('passives last exactly one wave', () => {
+    const c = newRun(9, { deck: ['needle', 'polish', 'heavy', 'mend'] });
+    c.playCard(uidOf(c, 'polish'));
+    c.playCard(uidOf(c, 'heavy'));
+    c.endTurn();
+    expect(c.sim.damageBonus).toBeCloseTo(0.15);
+    runUntilFrozen(c);
+    expect(c.sim.damageBonus).toBe(0);
+    expect(c.sim.speedFactor).toBe(1);
   });
 
-  it('a draft freezes enemies, projectiles, spawn progress, charge and damage', () => {
-    const c = toDraft(8, TRIALS.map((t) => ({ ...t, durationSeconds: 12 })));
+  it('a turn freezes enemies, projectiles, spawn progress, charge and damage', () => {
+    const c = newRun(8, { trials: TRIALS.map((t) => ({ ...t, durationSeconds: 12 })) });
+    c.playCard(towerUid(c), OPEN_A);
+    c.endTurn();
+    runUntilFrozen(c);
     const before = snapshot(c);
     const clock = new FixedStepClock();
-    for (let i = 0; i < 600; i++) {
-      clock.advance(1 / 60, c.isRunning(), () => c.sim.step());
-      c.updatePresentation(1 / 60);
-    }
+    for (let i = 0; i < 600; i++) clock.advance(1 / 60, c.isRunning(), () => c.sim.step());
     expect(snapshot(c)).toBe(before);
     expect(c.sim.enemies.length).toBeGreaterThan(0);
   });
+});
 
-  it('continue preserves survivors and residual charge and advances the trial', () => {
-    const c = toDraft(8, TRIALS.map((t) => ({ ...t, durationSeconds: 12 })));
-    const survivors = c.sim.enemies.map((e) => e.id);
-    const charge = c.sim.slots[0]!.elapsed;
-    const idx = firstWeaponIndex(c);
-    c.selectOffer(idx);
-    expect(c.requestPlace(3)).toBe('committed');
-    expect(c.canContinue()).toBe(false); // still settling
-    settle(c);
-    expect(c.canContinue()).toBe(true);
-    c.continueRun();
-    expect(c.phase).toBe('COMBAT');
-    expect(c.sim.trialIndex).toBe(1);
-    expect(c.sim.trialTime).toBe(0);
-    expect(c.sim.enemies.map((e) => e.id)).toEqual(survivors);
-    expect(c.sim.slots[0]!.elapsed).toBe(charge);
-    expect(c.sim.slots[3]!.elapsed).toBe(0);
+describe('sacrifice and purge', () => {
+  it('two marked cards are sacrificed for a 1-of-3 choice that goes to the hand; unlimited per turn', () => {
+    const c = newRun(10, { deck: ['needle', 'mend', 'ash', 'polish', 'heavy', 'quicken', 'mend', 'ash'] });
+    const sizeBefore = c.deck.size;
+    const [a, b] = c.deck.hand.filter((x) => !isWeaponId(x.defId)).map((x) => x.uid);
+    c.toggleMark(a);
+    expect(c.sacrifice()).toBe(false); // needs two
+    c.toggleMark(b);
+    expect(c.sacrifice()).toBe(true);
+    expect(c.turn!.stage).toBe('sacrificeChoice');
+    expect(c.turn!.offers!.length).toBe(3);
+    expect(new Set(c.turn!.offers).size).toBe(3);
+    expect(c.canEndTurn()).toBe(false);
+    expect(c.chooseOffer(1)).toBe(true);
+    expect(c.deck.size).toBe(sizeBefore - 1);
+    expect(c.deck.hand.length).toBe(TURN.handDraw - 1);
+    // a second sacrifice in the same turn is allowed
+    const rest = c.deck.hand.map((x) => x.uid);
+    c.toggleMark(rest[0]);
+    c.toggleMark(rest[1]);
+    expect(c.sacrifice()).toBe(true);
+    expect(c.chooseOffer(0)).toBe(true);
   });
 
-  it('invalid drops, cancels and double clicks never consume or duplicate rewards', () => {
-    const c = toDraft();
-    const idx = firstWeaponIndex(c);
-    expect(c.requestPlace(2)).toBe('rejected'); // nothing selected
-    c.selectOffer(idx);
-    expect(c.requestPlace(9)).toBe('rejected');
-    c.cancelSelection();
-    expect(c.draft!.stage).toBe('choosing');
-    expect(c.sim.slots.filter(Boolean).length).toBe(1);
-    c.selectOffer(idx);
-    expect(c.requestPlace(1)).toBe('committed');
-    expect(c.requestPlace(2)).toBe('rejected');
-    c.selectOffer(idx);
-    expect(c.requestPlace(2)).toBe('rejected');
-    expect(c.sim.slots.filter(Boolean).length).toBe(2);
-    expect(c.continueRun()).toBe(false);
-    settle(c);
-    expect(c.continueRun()).toBe(true);
-    expect(c.continueRun()).toBe(false);
-  });
-
-  it('occupied sockets require Replace; cancel keeps the old weapon; replace is atomic', () => {
-    const c = toDraft();
-    const idx = firstWeaponIndex(c);
-    const old = c.sim.slots[0]!;
-    c.selectOffer(idx);
-    expect(c.requestPlace(0)).toBe('confirm');
-    expect(c.phase).toBe('PLACEMENT');
-    expect(c.sim.slots[0]).toBe(old);
-    c.cancelReplace();
-    expect(c.draft!.stage).toBe('choosing');
-    expect(c.sim.slots[0]).toBe(old);
-    c.selectOffer(idx);
-    c.requestPlace(0);
-    expect(c.confirmReplace()).toBe(true);
-    expect(c.confirmReplace()).toBe(false);
-    const fresh = c.sim.slots[0]!;
-    expect(fresh).not.toBe(old);
-    expect(fresh.id).toBeGreaterThan(old.id);
-    expect(fresh.elapsed).toBe(0);
-    expect(c.sim.slots.filter(Boolean).length).toBe(1);
-  });
-
-  it('a full Base replacement leaves exactly six weapons', () => {
-    const c = new PhaseController(4, { trials: SHORT });
-    c.startRun(4);
-    for (let s = 1; s < 6; s++) c.sim.installWeapon(s, WEAPON_IDS[s % 4]);
-    runUntilFrozen(c);
-    const idx = firstWeaponIndex(c);
-    c.selectOffer(idx);
-    for (let s = 0; s < 6; s++) {
-      expect(c.requestPlace(s)).toBe('confirm');
-      c.cancelReplace();
-      c.selectOffer(idx);
+  it('sacrificing two identical cards guarantees that card among the offers', () => {
+    for (let seed = 1; seed < 80; seed++) {
+      const c = newRun(seed, { deck: ['needle', 'mend', 'mend', 'mend'] });
+      const mends = c.deck.hand.filter((x) => x.defId === 'mend').map((x) => x.uid);
+      c.toggleMark(mends[0]);
+      c.toggleMark(mends[1]);
+      c.sacrifice();
+      expect(c.turn!.offers).toContain('mend');
     }
-    c.requestPlace(4);
-    c.confirmReplace();
-    expect(c.sim.slots.filter(Boolean).length).toBe(6);
-    expect(new Set(c.sim.slots.map((w) => w!.id)).size).toBe(6);
   });
 
-  it('boons never occupy a socket and resolve only through Use', () => {
-    const trials = TRIALS.map((t) => ({ ...t, durationSeconds: 2 }));
-    // Find a seed whose third draft contains a boon.
-    for (let seed = 1; seed < 200; seed++) {
-      const c = new PhaseController(seed, { trials });
-      c.startRun(seed);
-      c.sim.baseHp = 50;
-      let boonIdx = -1;
-      for (let d = 0; d < 3; d++) {
-        runUntilFrozen(c);
-        if (c.phase !== 'DRAFT') break;
-        boonIdx = c.draft!.offer.findIndex((id) => !isWeaponId(id));
-        if (d < 2) {
-          expect(boonIdx).toBe(-1);
-          c.selectOffer(firstWeaponIndex(c));
-          c.requestPlace(d + 1);
-          settle(c);
-          c.continueRun();
-        }
-      }
-      if (boonIdx < 0 || c.phase !== 'DRAFT') continue;
-      const before = c.sim.slots.map((w) => w?.id ?? null);
-      c.selectOffer(boonIdx);
-      expect(c.requestPlace(5)).toBe('rejected');
-      expect(c.sim.slots.map((w) => w?.id ?? null)).toEqual(before);
-      expect(c.canContinue()).toBe(false);
-      const hp = c.sim.baseHp;
-      const stacks = c.sim.polishStacks;
-      expect(c.useBoon()).toBe(true);
-      expect(c.useBoon()).toBe(false);
-      expect(c.sim.baseHp > hp || c.sim.polishStacks > stacks).toBe(true);
-      expect(c.sim.baseHp).toBeLessThanOrEqual(100);
-      expect(c.canContinue()).toBe(true);
-      return;
-    }
-    throw new Error('no boon found in 200 seeds');
+  it('purge removes one marked card from the deck, once per turn', () => {
+    const c = newRun(11);
+    const size = c.deck.size;
+    const [a, b] = c.deck.hand.map((x) => x.uid);
+    c.toggleMark(a);
+    expect(c.purge()).toBe(true);
+    expect(c.deck.size).toBe(size - 1);
+    c.toggleMark(b);
+    expect(c.purge()).toBe(false);
+    expect(c.deck.size).toBe(size - 1);
   });
 
-  it('manual pause freezes and resume returns; visibility suspension preserves draft context', () => {
-    const c = new PhaseController(2, { trials: SHORT });
-    c.startRun(2);
+  it('a third mark replaces the oldest; marks never exceed two', () => {
+    const c = newRun(12);
+    const [a, b, d] = c.deck.hand.map((x) => x.uid);
+    c.toggleMark(a);
+    c.toggleMark(b);
+    c.toggleMark(d);
+    expect(c.turn!.marked).toEqual([b, d]);
+    c.toggleMark(b);
+    expect(c.turn!.marked).toEqual([d]);
+  });
+});
+
+describe('suspension, pause and endings', () => {
+  it('manual pause and visibility suspension preserve context', () => {
+    const c = newRun(2);
+    c.playCard(towerUid(c)); // targeting
+    c.suspend();
+    expect(c.suspended).toBe(true);
+    expect(c.playCard(towerUid(c), OPEN_A)).toBe('invalid');
+    expect(c.endTurn()).toBe(false);
+    c.resume();
+    expect(c.turn!.stage).toBe('targeting');
+    expect(c.playCard(towerUid(c), OPEN_A)).toBe('played');
+    c.endTurn();
     expect(c.pause()).toBe(true);
-    expect(c.phase).toBe('PAUSED');
     expect(c.isRunning()).toBe(false);
     c.resume();
     expect(c.phase).toBe('COMBAT');
-    c.suspend();
-    expect(c.phase).toBe('PAUSED');
-    expect(c.pauseReason).toBe('suspended');
-    c.resume();
-    runUntilFrozen(c);
-    const idx = firstWeaponIndex(c);
-    c.selectOffer(idx);
-    c.requestPlace(0); // confirm pending
-    c.suspend();
-    expect(c.suspended).toBe(true);
-    expect(c.confirmReplace()).toBe(false);
-    c.resume();
-    expect(c.draft!.stage).toBe('confirmReplace');
-    expect(c.confirmReplace()).toBe(true);
   });
 
-  it('runs a whole short campaign into clearing and an ending, with one transition per boundary', () => {
-    const c = new PhaseController(12, { trials: TRIALS.map((t) => ({ ...t, durationSeconds: 4 })) });
-    c.startRun(12);
+  it('a whole short run reaches an ending with one ending transition', () => {
+    const c = newRun(12, { trials: TRIALS.map((t) => ({ ...t, durationSeconds: 4 })) });
     const phases: string[] = [];
     c.on((e) => {
       if (e.type === 'phase') phases.push(e.to);
     });
-    let slot = 1;
-    for (let guard = 0; guard < 50; guard++) {
+    for (let guard = 0; guard < 50 && c.phase === 'TURN'; guard++) {
+      for (const card of [...c.deck.hand]) {
+        const free = SLOTS_UNLOCKED_AT_START.find((s) => !c.sim.slots[s]);
+        if (isWeaponId(card.defId) && free !== undefined) c.playCard(card.uid, free);
+        else if (!c.needsTarget(card.uid)) c.playCard(card.uid);
+      }
+      c.endTurn();
       runUntilFrozen(c);
-      if (c.phase === 'DRAFT') {
-        const idx = firstWeaponIndex(c);
-        c.selectOffer(idx);
-        if (slot < 6) c.requestPlace(slot++);
-        else {
-          c.requestPlace(0);
-          c.confirmReplace();
-        }
-        settle(c);
-        c.continueRun();
-      } else break;
     }
     expect(['VICTORY', 'DEFEAT']).toContain(c.phase);
-    expect(phases.filter((p) => p === 'DRAFT' || p === 'PLACEMENT').length).toBeGreaterThan(0);
     expect(phases.filter((p) => p === 'VICTORY' || p === 'DEFEAT').length).toBe(1);
   });
 
   it('restart discards the old run completely', () => {
-    const c = toDraft(3);
-    c.selectOffer(firstWeaponIndex(c));
+    const c = newRun(3);
+    c.playCard(towerUid(c), OPEN_A);
+    c.toggleMark(c.deck.hand[0].uid);
     c.startRun(77);
-    expect(c.phase).toBe('COMBAT');
-    expect(c.draft).toBeNull();
-    expect(c.sim.trialIndex).toBe(0);
-    expect(c.sim.enemies.length).toBe(0);
-    expect(c.sim.slots.filter(Boolean).length).toBe(1);
+    expect(c.phase).toBe('TURN');
+    expect(c.turn!.turnIndex).toBe(0);
+    expect(c.turn!.marked).toEqual([]);
+    expect(c.sim.slots.every((w) => !w)).toBe(true);
+    expect(c.deck.size).toBe(STARTING_DECK.length);
     expect(c.sim.baseHp).toBe(100);
     expect(c.seed).toBe(77);
-  });
-});
-
-describe('offers', () => {
-  it('obey distinctness, weapon minimums, unowned inclusion and boon eligibility over many seeds', () => {
-    for (let seed = 1; seed < 400; seed++) {
-      const rng = new Rng(seed);
-      for (let d = 0; d < 7; d++) {
-        const owned = new Set<WeaponId>(WEAPON_IDS.filter(() => rng.next() < 0.5));
-        const polishStacks = rng.int(3);
-        const baseHp = rng.next() < 0.3 ? 100 : 60;
-        const offer = generateOffer(rng, { draftIndex: d, ownedWeapons: owned, polishStacks, baseHp });
-        expect(new Set(offer).size).toBe(3);
-        const weapons = offer.filter((id) => isWeaponId(id));
-        expect(weapons.length).toBeGreaterThanOrEqual(2);
-        if (d < 2) expect(weapons.length).toBe(3);
-        if (owned.size < 4) expect(weapons.some((w) => !owned.has(w as WeaponId))).toBe(true);
-        if (polishStacks >= 2) expect(offer).not.toContain('polish');
-        if (baseHp >= 100) expect(offer).not.toContain('mend');
-      }
-    }
-  });
-
-  it('independent RNG streams: cosmetic draws cannot change offers or spawns', () => {
-    const a = deriveStream(42, 'offers');
-    const b = deriveStream(42, 'offers');
-    const cosmetic = deriveStream(42, 'cosmetic');
-    for (let i = 0; i < 1000; i++) cosmetic.next();
-    for (let i = 0; i < 20; i++) expect(a.next()).toBe(b.next());
-    const s1 = new PhaseController(42);
-    const s2 = new PhaseController(42);
-    s1.startRun(42);
-    s2.startRun(42);
-    for (let i = 0; i < 1200; i++) {
-      s1.sim.step();
-      s2.sim.step();
-    }
-    expect(JSON.stringify(s1.sim.enemies)).toBe(JSON.stringify(s2.sim.enemies));
   });
 });

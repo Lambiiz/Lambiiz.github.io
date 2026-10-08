@@ -6,9 +6,10 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { EnemyKind, EnemyState, SimEvent } from '../game/types';
 import * as art from './art';
 
-const CAPACITY = 160;
+const CAPACITY = 600;
 /** Visual-only scale per archetype (logical radii live in game/content.ts). */
-const VISUAL_SCALE: Record<EnemyKind, number> = { echo: 1.12, moth: 1.35, urn: 1.12 };
+/** Pieces are modelled at the first-slice radii (0.32 / 0.26 / 0.44) and scaled to the logic radii. */
+const VISUAL_SCALE: Record<EnemyKind, number> = { echo: 1.4, moth: 1.6, urn: 1.4 };
 const UP = new THREE.Vector3(0, 1, 0);
 
 interface Part {
@@ -76,19 +77,16 @@ export class EnemiesView {
       this.disposables.push(x);
       return x;
     };
-    const ceramicTex = track(art.colorTexture(art.drawMaskFace(), renderer));
-    const ceramic = track(new THREE.MeshStandardMaterial({ color: 0xe9e1c9, map: ceramicTex, roughness: 0.38, side: THREE.DoubleSide }));
-    const brass = track(new THREE.MeshStandardMaterial({ color: 0xc2a46a, metalness: 0.85, roughness: 0.35 }));
-    const ink = track(new THREE.MeshStandardMaterial({ color: 0x0c0f18, roughness: 0.5 }));
-    const veil = track(
-      new THREE.MeshStandardMaterial({ color: 0x6b7cab, emissive: 0x1a2a4a, roughness: 0.8, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }),
-    );
-    const pearl = track(new THREE.MeshStandardMaterial({ color: 0x232638, metalness: 0.35, roughness: 0.14, emissive: 0x0e3a3a, emissiveIntensity: 0.6 }));
+    // Foes are small turned game pieces: bone bodies on dark wooden bases.
+    const boneTex = track(art.colorTexture(art.drawBone(), renderer));
+    const bone = track(new THREE.MeshStandardMaterial({ color: 0xe6dac0, map: boneTex, roughness: 0.55 }));
+    const woodTex = track(art.colorTexture(art.drawDarkWood(), renderer));
+    const baseWood = track(new THREE.MeshStandardMaterial({ color: 0x6a4a34, map: woodTex, roughness: 0.7 }));
+    const ink = track(new THREE.MeshStandardMaterial({ color: 0x0b0806, roughness: 0.6 }));
+    const darkBrass = track(new THREE.MeshStandardMaterial({ color: 0xb08a4a, metalness: 0.7, roughness: 0.4 }));
+    const pearl = track(new THREE.MeshStandardMaterial({ color: 0x1c1a22, metalness: 0.35, roughness: 0.18, emissive: 0x0e3a3a, emissiveIntensity: 0.5 }));
     const wingTex = track(art.colorTexture(art.drawMothWing(), renderer));
-    const wing = track(new THREE.MeshStandardMaterial({ map: wingTex, roughness: 0.7, side: THREE.DoubleSide, transparent: true, opacity: 0.96 }));
-    const urnBody = track(new THREE.MeshStandardMaterial({ color: 0xd9cfb3, map: ceramicTex, roughness: 0.5 }));
-    const enamel = track(new THREE.MeshStandardMaterial({ color: 0x1d2a4c, roughness: 0.28, metalness: 0.25 }));
-    const darkBrass = track(new THREE.MeshStandardMaterial({ color: 0x8c6a34, metalness: 0.9, roughness: 0.32 }));
+    const wing = track(new THREE.MeshStandardMaterial({ map: wingTex, color: 0xfff4dc, emissive: 0x2a2418, roughness: 0.7, side: THREE.DoubleSide }));
 
     const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, _shadow = false) => {
       track(geo);
@@ -99,169 +97,113 @@ export class EnemiesView {
       m.castShadow = false; // crowds use pooled blob shadows, never the realtime shadow map
       void _shadow;
       // conservative bounds covering the whole arena; instances move every frame
-      m.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, 0), 16);
+      m.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, 0), 40);
       m.frustumCulled = false;
       this.root.add(m);
       return m;
     };
 
-    // ---------------- Veiled Echo: hollow ceramic mask above a tapering veil
-    // front half-shell centred on +z (local forward); the hollow back stays open
-    const maskGeo = new THREE.SphereGeometry(0.3, 24, 16, Math.PI * 0.08, Math.PI * 0.84, Math.PI * 0.06, Math.PI * 0.84);
-    maskGeo.scale(1.12, 1.4, 0.78);
-    const veilPts: THREE.Vector2[] = [];
-    const veilProfile = [
-      [0.015, 0.0],
-      [0.06, 0.1],
-      [0.15, 0.3],
-      [0.26, 0.55],
-      [0.33, 0.76],
-      [0.31, 0.9],
-      [0.2, 0.99],
-    ];
-    for (const [r, y] of veilProfile) veilPts.push(new THREE.Vector2(r, y));
-    const veilGeo = new THREE.LatheGeometry(veilPts, 28);
-    // rippled hem: modulate radius by angle near the bottom
-    {
-      const pos = veilGeo.attributes.position as THREE.BufferAttribute;
-      for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i);
-        const y = pos.getY(i);
-        const z = pos.getZ(i);
-        const a = Math.atan2(z, x);
-        const k = 1 + 0.16 * Math.sin(a * 7) * (1 - Math.min(1, y / 0.75));
-        pos.setXYZ(i, x * k, y, z * k);
-      }
-      veilGeo.computeVertexNormals();
-    }
-    const eyeL = new THREE.SphereGeometry(0.075, 12, 8);
-    eyeL.scale(1.55, 0.8, 0.45);
-    eyeL.translate(-0.12, 0.07, 0.2);
-    const eyeR = eyeL.clone();
-    eyeR.translate(0.24, 0, 0);
-    const mouth = new THREE.BoxGeometry(0.12, 0.022, 0.03);
-    mouth.translate(0, -0.17, 0.205);
-    const eyesGeo = mergeGeometries([eyeL, eyeR, mouth])!;
-    [eyeL, eyeR, mouth].forEach((g) => g.dispose());
-    const collarGeo = new THREE.TorusGeometry(0.2, 0.028, 8, 24);
-    collarGeo.rotateX(Math.PI / 2);
-    const haloRingGeo = new THREE.TorusGeometry(0.24, 0.018, 6, 32);
-    haloRingGeo.rotateX(Math.PI / 2);
+    const lathe = (pts: number[][], seg = 20) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
+    const disc = (r: number) => {
+      const g = new THREE.CylinderGeometry(r, r * 1.05, 0.08, 20);
+      g.translate(0, 0.04, 0);
+      return g;
+    };
+    // hop-and-slide gait: a piece lifts slightly and tips forward, like being moved by a hand
+    const hop = (t: number, ph: number, f: number, h: number) => Math.abs(Math.sin(t * f + ph)) * h;
+    const tip = (t: number, ph: number, f: number, a: number) => Math.sin(t * f + ph) * a;
 
-    const echoBob = (t: number, ph: number) => Math.sin(t * 2.1 + ph) * 0.06;
+    // ---------------- Veiled Echo: hooded pawn-like piece with a dark mask face
+    const echoBody = lathe([
+      [0.29, 0.08],
+      [0.27, 0.14],
+      [0.2, 0.3],
+      [0.15, 0.5],
+      [0.13, 0.6],
+      [0.18, 0.68],
+      [0.19, 0.79],
+      [0.15, 0.9],
+      [0.07, 0.96],
+      [0, 0.97],
+    ]);
+    const echoFace = new THREE.CircleGeometry(0.105, 18);
+    echoFace.scale(1, 1.25, 1);
+    echoFace.translate(0, 0.78, 0.172);
+    const eF = 5;
     this.addArch('echo', [
-      {
-        mesh: mk(veilGeo, veil),
-        local: (o, t, ph) => compose(o, 0, 0.12 + echoBob(t, ph) * 0.5, 0, Math.sin(t * 2.1 + ph) * 0.06, Math.sin(t * 1.3 + ph) * 0.3, 0, 1, 1 + Math.sin(t * 4.2 + ph) * 0.04),
-      },
-      { mesh: mk(collarGeo, brass), local: (o, t, ph) => compose(o, 0, 1.03 + echoBob(t, ph), 0, 0, 0, 0) },
-      {
-        mesh: mk(maskGeo, ceramic, true),
-        local: (o, t, ph, hit) => compose(o, 0, 1.3 + echoBob(t, ph), 0.03, -0.42 - hit * 0.3, 0, Math.sin(t * 1.7 + ph) * 0.08),
-      },
-      {
-        mesh: mk(eyesGeo, ink),
-        local: (o, t, ph, hit) => compose(o, 0, 1.3 + echoBob(t, ph), 0.03, -0.42 - hit * 0.3, 0, Math.sin(t * 1.7 + ph) * 0.08, 1.12, 1.4, 0.78),
-      },
-      {
-        // ceremonial halo above the mask: a thin brass ring that makes the silhouette unmistakable
-        mesh: mk(haloRingGeo, brass),
-        local: (o, t, ph) => compose(o, 0, 1.78 + echoBob(t, ph) * 1.2, -0.05, -0.35, t * 0.6 + ph, 0),
-      },
+      { mesh: mk(disc(0.32), baseWood), local: (o, t, ph) => compose(o, 0, hop(t, ph, eF, 0.07), 0, tip(t, ph, eF * 2, 0.06), 0, 0) },
+      { mesh: mk(echoBody, bone, true), local: (o, t, ph, hit) => compose(o, 0, hop(t, ph, eF, 0.07), 0, tip(t, ph, eF * 2, 0.06) - hit * 0.25, 0, 0, 1, 1 - hit * 0.08, 1) },
+      { mesh: mk(echoFace, ink), local: (o, t, ph, hit) => compose(o, 0, hop(t, ph, eF, 0.07), 0, tip(t, ph, eF * 2, 0.06) - hit * 0.25, 0, 0, 1, 1 - hit * 0.08, 1) },
     ]);
 
-    // ---------------- Folded Moth: fast folded wings around a dark pearl
-    const pearlGeo = new THREE.SphereGeometry(0.16, 20, 14);
+    // ---------------- Folded Moth: a peg piece carrying wing plates and a dark pearl
+    const peg = new THREE.CylinderGeometry(0.03, 0.04, 0.5, 8);
+    peg.translate(0, 0.33, 0);
+    const pearlGeo = new THREE.SphereGeometry(0.1, 14, 10);
+    pearlGeo.translate(0, 0.62, 0);
     const wingShape = new THREE.Shape();
     wingShape.moveTo(0, 0);
-    wingShape.bezierCurveTo(0.18, 0.32, 0.5, 0.42, 0.62, 0.22);
-    wingShape.bezierCurveTo(0.66, 0.08, 0.5, 0.02, 0.38, 0.0);
-    wingShape.bezierCurveTo(0.5, -0.08, 0.48, -0.3, 0.3, -0.34);
-    wingShape.bezierCurveTo(0.16, -0.32, 0.06, -0.16, 0, 0);
-    const wingGeo = new THREE.ShapeGeometry(wingShape, 10);
-    // shape lies in XY; lay it flat (XZ) with +y -> +z so the forewing leads
-    wingGeo.rotateX(Math.PI / 2);
+    wingShape.bezierCurveTo(0.12, 0.22, 0.34, 0.3, 0.42, 0.15);
+    wingShape.bezierCurveTo(0.45, 0.05, 0.34, 0.0, 0.26, 0.0);
+    wingShape.bezierCurveTo(0.34, -0.06, 0.32, -0.2, 0.2, -0.23);
+    wingShape.bezierCurveTo(0.1, -0.22, 0.04, -0.1, 0, 0);
+    const wingGeo = new THREE.ShapeGeometry(wingShape, 8);
     {
       const uv = wingGeo.attributes.uv as THREE.BufferAttribute;
-      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 0.66, (uv.getY(i) + 0.34) / 0.76);
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 0.45, (uv.getY(i) + 0.23) / 0.53);
     }
-    const haloGeo = new THREE.TorusGeometry(0.24, 0.012, 6, 32);
-    const flap = (t: number, ph: number) => Math.sin(t * 22 + ph * 3);
-    const mothY = (t: number, ph: number) => 0.85 + Math.sin(t * 5 + ph) * 0.09;
+    const mF = 8;
+    const mothRoot = (o: THREE.Matrix4, t: number, ph: number) => compose(o, 0, hop(t, ph, mF, 0.05), 0, tip(t, ph, mF * 2, 0.05), 0, 0);
+    // wings stay mostly spread so they read from the high camera; a quick shallow flutter
+    const flap = (t: number, ph: number) => 0.12 + Math.sin(t * 18 + ph * 3) * 0.22;
     this.addArch('moth', [
-      { mesh: mk(pearlGeo, pearl, true), local: (o, t, ph, hit) => compose(o, 0, mothY(t, ph), 0, 0, 0, 0, 1 - hit * 0.15) },
+      { mesh: mk(disc(0.26), baseWood), local: (o, t, ph) => mothRoot(o, t, ph) },
+      { mesh: mk(peg, darkBrass), local: (o, t, ph) => mothRoot(o, t, ph) },
+      { mesh: mk(pearlGeo, pearl, true), local: (o, t, ph, hit) => mothRoot(o, t, ph).multiply(compose(tmpM, 0, 0, 0, 0, 0, 0, 1 - hit * 0.12)) },
       {
         mesh: mk(wingGeo, wing),
-        local: (o, t, ph) => compose(o, 0.06, mothY(t, ph), 0, 0, 0.15, 0.25 + flap(t, ph) * 0.85),
+        local: (o, t, ph) => mothRoot(o, t, ph).multiply(compose(tmpM, 0.02, 0.6, 0, 0, -0.3, flap(t, ph))),
       },
       {
         mesh: mk(wingGeo.clone(), wing),
-        local: (o, t, ph) => compose(o, -0.06, mothY(t, ph), 0, 0, -0.15, -(0.25 + flap(t, ph) * 0.85), -1, 1, 1),
+        local: (o, t, ph) => mothRoot(o, t, ph).multiply(compose(tmpM, -0.02, 0.6, 0, 0, 0.3, -flap(t, ph), -1, 1, 1)),
       },
-      { mesh: mk(haloGeo, brass), local: (o, t, ph) => compose(o, 0, mothY(t, ph), 0, Math.PI / 2 + 0.4, t * 2 + ph, 0) },
     ]);
 
-    // ---------------- Burden Urn: armored urn with a lid and brass bands
-    const urnProfile = [
-      [0.0, 0.0],
-      [0.26, 0.0],
-      [0.28, 0.06],
-      [0.22, 0.12],
-      [0.36, 0.3],
-      [0.48, 0.52],
-      [0.46, 0.72],
-      [0.32, 0.9],
-      [0.24, 0.98],
-      [0.27, 1.04],
-      [0.0, 1.04],
-    ].map(([r, y]) => new THREE.Vector2(r, y));
-    const urnGeo = new THREE.LatheGeometry(urnProfile, 30);
-    const band1 = new THREE.TorusGeometry(0.49, 0.055, 8, 32);
-    band1.rotateX(Math.PI / 2);
-    band1.translate(0, 0.58, 0);
-    const band2 = new THREE.TorusGeometry(0.4, 0.045, 8, 32);
-    band2.rotateX(Math.PI / 2);
-    band2.translate(0, 0.32, 0);
-    const band3 = new THREE.TorusGeometry(0.26, 0.03, 8, 24);
-    band3.rotateX(Math.PI / 2);
-    band3.translate(0, 0.96, 0);
-    const bandsGeo = mergeGeometries([band1, band2, band3])!;
-    [band1, band2, band3].forEach((g) => g.dispose());
-    const lidProfile = [
-      [0.0, 0.14],
-      [0.08, 0.14],
-      [0.06, 0.1],
-      [0.18, 0.07],
-      [0.3, 0.02],
-      [0.3, 0.0],
-      [0.0, 0.0],
-    ].map(([r, y]) => new THREE.Vector2(r, y));
-    const lidGeo = new THREE.LatheGeometry(lidProfile, 24);
-    const knob = new THREE.SphereGeometry(0.07, 10, 8);
-    knob.translate(0, 0.2, 0);
-    const knobGeo = knob;
-    const waddle = (t: number, ph: number) => Math.sin(t * 2.6 + ph);
-    const urnRoot = (o: THREE.Matrix4, t: number, ph: number, hit: number, y = 0, extraRx = 0, sc = 1) =>
-      compose(o, 0, y + Math.abs(waddle(t, ph)) * 0.05, 0, extraRx - hit * 0.12, 0, waddle(t, ph) * 0.09, sc, sc * (1 - hit * 0.08), sc);
+    // ---------------- Burden Urn: a squat stacked-jar piece with dark brass bands
+    const urnBody = lathe(
+      [
+        [0.37, 0.08],
+        [0.41, 0.2],
+        [0.43, 0.36],
+        [0.35, 0.5],
+        [0.3, 0.56],
+        [0.36, 0.62],
+        [0.39, 0.74],
+        [0.31, 0.86],
+        [0.22, 0.9],
+        [0.25, 0.96],
+        [0, 0.97],
+      ],
+      24,
+    );
+    const b1 = new THREE.TorusGeometry(0.43, 0.035, 6, 24);
+    b1.rotateX(Math.PI / 2);
+    b1.translate(0, 0.36, 0);
+    const b2 = new THREE.TorusGeometry(0.39, 0.03, 6, 24);
+    b2.rotateX(Math.PI / 2);
+    b2.translate(0, 0.74, 0);
+    const knob = new THREE.SphereGeometry(0.08, 10, 8);
+    knob.translate(0, 1.02, 0);
+    const bandsGeo = mergeGeometries([b1, b2, knob])!;
+    [b1, b2, knob].forEach((g) => g.dispose());
+    const uF = 3.4;
+    const urnRoot = (o: THREE.Matrix4, t: number, ph: number, hit: number) =>
+      compose(o, 0, hop(t, ph, uF, 0.05), 0, tip(t, ph, uF * 2, 0.05) - hit * 0.12, 0, Math.sin(t * uF + ph) * 0.05, 1, 1 - hit * 0.06, 1);
     this.addArch('urn', [
-      { mesh: mk(urnGeo, urnBody, true), local: (o, t, ph, hit) => urnRoot(o, t, ph, hit) },
+      { mesh: mk(disc(0.44), baseWood), local: (o, t, ph, hit) => urnRoot(o, t, ph, hit) },
+      { mesh: mk(urnBody, bone, true), local: (o, t, ph, hit) => urnRoot(o, t, ph, hit) },
       { mesh: mk(bandsGeo, darkBrass), local: (o, t, ph, hit) => urnRoot(o, t, ph, hit) },
-      {
-        mesh: mk(lidGeo, enamel, true),
-        local: (o, t, ph, hit) => {
-          urnRoot(o, t, ph, hit);
-          const clatter = Math.max(0, Math.sin(t * 5.2 + ph)) * 0.03 + hit * 0.08;
-          return o.multiply(compose(tmpM, 0, 1.03 + clatter, 0, clatter * 0.6, 0, 0));
-        },
-      },
-      {
-        mesh: mk(knobGeo, brass),
-        local: (o, t, ph, hit) => {
-          urnRoot(o, t, ph, hit);
-          const clatter = Math.max(0, Math.sin(t * 5.2 + ph)) * 0.03 + hit * 0.08;
-          return o.multiply(compose(tmpM, 0, 1.03 + clatter, 0, clatter * 0.6, 0, 0));
-        },
-      },
     ]);
 
     // blob shadows (pooled)
@@ -426,8 +368,8 @@ export class EnemiesView {
       // damaged-only health indicator
       if (vis.diedAt === null && vis.hp < vis.maxHp && this.hpCount < CAPACITY) {
         const frac = Math.max(0, vis.hp / vis.maxHp);
-        const h = vis.kind === 'urn' ? 1.6 : vis.kind === 'moth' ? 1.6 : 2.0;
-        const w = vis.kind === 'urn' ? 0.9 : 0.62;
+        const h = vis.kind === 'urn' ? 1.75 : vis.kind === 'moth' ? 1.35 : 1.6;
+        const w = vis.kind === 'urn' ? 1.0 : 0.7;
         v.set(vis.x, h, vis.z);
         const off = new THREE.Vector3(-w / 2, 0, 0).applyQuaternion(camQ);
         tmpM.compose(v.clone().add(off), camQ, s.set(w, 0.07, 1));

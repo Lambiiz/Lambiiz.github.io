@@ -1,26 +1,29 @@
 // Core gameplay types. Simulation code only depends on this file, content.ts and rng.ts.
 
 export type WeaponId = 'needle' | 'light' | 'thread' | 'bell';
-export type BoonId = 'polish' | 'mend';
-export type CardId = WeaponId | BoonId;
+/** Placeholder active/passive cards (real card design comes later). */
+export type SpellId = 'mend' | 'ash' | 'quicken' | 'polish' | 'heavy';
+export type CardId = WeaponId | SpellId;
+export type CardType = 'tower' | 'active' | 'passive';
+/** Only 'common' exists for now; higher rarities cost more energy later. */
+export type Rarity = 'common';
 export type EnemyKind = 'echo' | 'moth' | 'urn';
 
-export type Phase =
-  | 'TITLE'
-  | 'COMBAT'
-  | 'DRAFT'
-  | 'PLACEMENT'
-  | 'PAUSED'
-  | 'CLEARING'
-  | 'DEFEAT'
-  | 'VICTORY';
+export type Phase = 'TITLE' | 'COMBAT' | 'TURN' | 'PAUSED' | 'CLEARING' | 'DEFEAT' | 'VICTORY';
 
 export type WeaponPattern = 'projectile' | 'lance' | 'chain' | 'pulse';
 
-export interface WeaponDef {
-  id: WeaponId;
+interface CardBase {
   name: string;
-  kind: 'weapon';
+  cost: number; // energy
+  rarity: Rarity;
+  summary: string;
+  flavor: string;
+}
+
+export interface WeaponDef extends CardBase {
+  id: WeaponId;
+  type: 'tower';
   pattern: WeaponPattern;
   interval: number; // seconds between shots
   damage: number; // primary damage (chain: first hop)
@@ -30,19 +33,29 @@ export interface WeaponDef {
   pulseRadius?: number;
   projectileSpeed?: number;
   projectileLife?: number;
-  summary: string;
-  flavor: string;
 }
 
-export interface BoonDef {
-  id: BoonId;
-  name: string;
-  kind: 'boon';
-  summary: string;
-  flavor: string;
+export type SpellEffect =
+  | { kind: 'heal'; amount: number }
+  | { kind: 'blast'; damage: number; radius: number } // resolves at the start of the next wave
+  | { kind: 'charge' } // fills one placed tower's charge (needs a tower target)
+  | { kind: 'damageBonus'; amount: number } // passive: additive damage bonus for the next wave
+  | { kind: 'slow'; factor: number }; // passive: enemy speed multiplier for the next wave
+
+export interface SpellDef extends CardBase {
+  id: SpellId;
+  type: 'active' | 'passive';
+  effect: SpellEffect;
+  target: 'none' | 'tower';
 }
 
-export type CardDef = WeaponDef | BoonDef;
+export type CardDef = WeaponDef | SpellDef;
+
+/** A physical card in the run's deck. `uid` distinguishes duplicates. */
+export interface CardInstance {
+  uid: number;
+  defId: CardId;
+}
 
 export interface EnemyDef {
   kind: EnemyKind;
@@ -120,11 +133,12 @@ export type SimEvent =
       targets: number[];
       points: Vec2[]; // impact points (chain: each hop; lance: target; pulse: empty)
     }
-  | { type: 'damaged'; t: number; enemyId: number; amount: number; hp: number; source: WeaponId; x: number; z: number }
+  | { type: 'damaged'; t: number; enemyId: number; amount: number; hp: number; source: WeaponId | 'ash'; x: number; z: number }
   | { type: 'died'; t: number; enemyId: number; kind: EnemyKind; x: number; z: number }
   | { type: 'arrived'; t: number; enemyId: number; kind: EnemyKind; damage: number; x: number; z: number }
   | { type: 'projectileExpired'; t: number; projectileId: number; x: number; z: number }
   | { type: 'baseDamaged'; t: number; amount: number; hp: number }
+  | { type: 'blast'; t: number; radius: number; hits: number }
   | { type: 'healed'; t: number; amount: number; hp: number };
 
 export type StepOutcome = 'continue' | 'boundary' | 'clearingStarted' | 'defeat' | 'victory';

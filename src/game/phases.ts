@@ -1,45 +1,55 @@
-// The single phase controller: owns state transitions, offers, placement/replacement and
-// reward resolution. Views observe it through typed events; it never touches rendering.
-import { BOON_TUNING, cardDef, isWeaponId, SLOT_COUNT, TRIALS } from './content';
-import { generateOffer } from './draft';
+// The single phase controller: owns state transitions and the turn loop (hand, energy, playing,
+// sacrifice, purge). Views observe it through typed events; it never touches rendering.
+//
+// A run opens with a turn before wave 1. Each wave freezes at its boundary into a turn:
+// draw 4, energy refills to 6, play cards, sacrifice/purge, then End Turn resumes combat.
+import { cardDef, isWeaponId, SLOT_COUNT, STARTING_DECK, TRIALS, TURN, WEAPONS } from './content';
+import { Deck, sacrificeOffers } from './deck';
 import { deriveStream, Rng } from './rng';
 import { Simulation } from './simulation';
-import type { CardId, Phase, StepOutcome, TrialDef, WeaponId, WeaponInstance } from './types';
+import type { CardId, CardInstance, Phase, SpellDef, StepOutcome, TrialDef, WeaponInstance } from './types';
 
-export type DraftStage = 'choosing' | 'boonSelected' | 'placing' | 'confirmReplace' | 'settling' | 'resolved';
+export type TurnStage = 'idle' | 'targeting' | 'confirmReplace' | 'sacrificeChoice';
 
-export interface DraftState {
-  draftIndex: number;
-  offer: CardId[];
+export interface TurnState {
+  turnIndex: number; // 0 = the opening turn before wave 1
+  energy: number;
+  stage: TurnStage;
+  /** Card waiting for a target (a tower card, or an active that targets a tower). */
   selected: number | null;
-  stage: DraftStage;
   pendingSlot: number | null;
-  settleRemaining: number;
-  resolved: { card: CardId; slot: number | null } | null;
+  /** Up to two cards marked for sacrifice (right-click). */
+  marked: number[];
+  purgesLeft: number;
+  offers: CardId[] | null;
 }
+
+export type PlayResult = 'played' | 'needsTarget' | 'confirm' | 'noEnergy' | 'locked' | 'invalid';
 
 export type ControllerEvent =
   | { type: 'phase'; from: Phase; to: Phase }
   | { type: 'runStarted'; seed: number }
-  | { type: 'offer'; draft: DraftState }
-  | { type: 'selection'; index: number | null }
-  | { type: 'replacePreview'; slot: number | null }
-  | { type: 'committed'; slot: number; instance: WeaponInstance; replaced: WeaponInstance | null; offerIndex: number }
-  | { type: 'boonUsed'; id: CardId; offerIndex: number }
-  | { type: 'settled' }
+  | { type: 'turnStarted'; turnIndex: number; drawn: CardInstance[] }
+  | { type: 'cardPlayed'; card: CardInstance; slot: number | null; instance: WeaponInstance | null; replaced: WeaponInstance | null }
+  | { type: 'sacrificed'; cards: CardInstance[]; offers: CardId[] }
+  | { type: 'offerChosen'; card: CardInstance }
+  | { type: 'purged'; card: CardInstance }
+  | { type: 'handDiscarded'; cards: CardInstance[] }
+  | { type: 'selection'; uid: number | null }
+  | { type: 'marked'; uids: number[] }
   | { type: 'suspended'; value: boolean };
-
-export const SETTLE_SECONDS = 0.34;
 
 export interface ControllerOptions {
   trials?: TrialDef[];
+  deck?: CardId[];
 }
 
 export class PhaseController {
   phase: Phase = 'TITLE';
   sim: Simulation;
-  draft: DraftState | null = null;
-  /** True while the page lost visibility during a draft; requires an explicit Resume. */
+  deck: Deck;
+  turn: TurnState | null = null;
+  /** True while the page lost visibility during a turn; requires an explicit Resume. */
   suspended = false;
   pausedFrom: 'COMBAT' | 'CLEARING' | null = null;
   pauseReason: 'manual' | 'suspended' | null = null;
@@ -49,11 +59,14 @@ export class PhaseController {
   private offerRng: Rng;
   private listeners = new Set<(e: ControllerEvent) => void>();
   private trials: TrialDef[];
+  private startingDeck: CardId[];
 
   constructor(seed: number, opts: ControllerOptions = {}) {
     this.trials = opts.trials ?? TRIALS;
+    this.startingDeck = opts.deck ?? STARTING_DECK;
     this.seed = seed;
     this.sim = new Simulation({ seed, trials: this.trials });
+    this.deck = new Deck(this.startingDeck, deriveStream(seed, 'deck'));
     this.offerRng = deriveStream(seed, 'offers');
   }
 
@@ -79,18 +92,18 @@ export class PhaseController {
     return (this.phase === 'COMBAT' || this.phase === 'CLEARING') && !this.suspended;
   }
 
-  /** Start a fresh run (also used for restart). Old simulation state is discarded wholesale. */
+  /** Start a fresh run (also used for restart). Old state is discarded wholesale. */
   startRun(seed: number): void {
     this.seed = seed;
     this.sim = new Simulation({ seed, trials: this.trials });
+    this.deck = new Deck(this.startingDeck, deriveStream(seed, 'deck'));
     this.offerRng = deriveStream(seed, 'offers');
-    this.draft = null;
+    this.turn = null;
     this.suspended = false;
     this.pausedFrom = null;
     this.pauseReason = null;
-    this.sim.installWeapon(0, 'needle');
     this.emit({ type: 'runStarted', seed });
-    this.setPhase('COMBAT');
+    this.openTurn(0);
   }
 
   /** Apply a simulation step outcome. Called at most once per boundary because stepping stops. */
@@ -99,7 +112,7 @@ export class PhaseController {
       case 'continue':
         return;
       case 'defeat':
-        this.draft = null;
+        this.turn = null;
         this.setPhase('DEFEAT');
         return;
       case 'victory':
@@ -109,165 +122,227 @@ export class PhaseController {
         this.setPhase('CLEARING');
         return;
       case 'boundary':
-        this.openDraft();
+        this.openTurn(this.sim.trialIndex + 1);
         return;
     }
   }
 
-  private openDraft(): void {
-    const owned = new Set<WeaponId>();
-    for (const w of this.sim.slots) if (w) owned.add(w.defId);
-    const offer = generateOffer(this.offerRng, {
-      draftIndex: this.sim.trialIndex,
-      ownedWeapons: owned,
-      polishStacks: this.sim.polishStacks,
-      baseHp: this.sim.baseHp,
-    });
-    this.draft = {
-      draftIndex: this.sim.trialIndex,
-      offer,
+  private openTurn(turnIndex: number): void {
+    this.sim.resetWaveModifiers(); // passives last exactly one wave
+    this.turn = {
+      turnIndex,
+      energy: TURN.energyPerTurn,
+      stage: 'idle',
       selected: null,
-      stage: 'choosing',
       pendingSlot: null,
-      settleRemaining: 0,
-      resolved: null,
+      marked: [],
+      purgesLeft: TURN.purgesPerTurn,
+      offers: null,
     };
-    this.setPhase('DRAFT');
-    this.emit({ type: 'offer', draft: this.draft });
+    const drawn = turnIndex === 0 ? this.deck.drawOpening(TURN.handDraw) : this.deck.draw(TURN.handDraw);
+    this.setPhase('TURN');
+    this.emit({ type: 'turnStarted', turnIndex, drawn });
   }
 
-  nextTrialForecast(): string {
-    const next = this.trials[Math.min(this.sim.trialIndex + 1, this.trials.length - 1)];
-    return next.forecast;
+  /** Forecast for the wave that follows the current turn. */
+  nextWaveForecast(): string {
+    const t = this.turn;
+    const idx = !t || t.turnIndex === 0 ? this.sim.trialIndex : Math.min(this.sim.trialIndex + 1, this.trials.length - 1);
+    return this.trials[idx].forecast;
   }
 
-  private inputLocked(): boolean {
-    return this.suspended || !this.draft;
+  /** Index (0-based) of the wave that follows the current turn. */
+  nextWaveIndex(): number {
+    const t = this.turn;
+    return !t || t.turnIndex === 0 ? this.sim.trialIndex : Math.min(this.sim.trialIndex + 1, this.trials.length - 1);
   }
 
-  /** Select an offered card (click or drag start). Weapons enter placement; boons await Use. */
-  selectOffer(index: number): boolean {
-    const d = this.draft;
-    if (this.inputLocked() || !d) return false;
-    if (d.stage !== 'choosing' && d.stage !== 'boonSelected' && d.stage !== 'placing') return false;
-    if (index < 0 || index >= d.offer.length) return false;
-    d.selected = index;
-    d.pendingSlot = null;
-    if (isWeaponId(d.offer[index])) {
-      d.stage = 'placing';
-      this.setPhase('PLACEMENT');
-    } else {
-      d.stage = 'boonSelected';
-      this.setPhase('DRAFT');
-    }
-    this.emit({ type: 'selection', index });
+  private active(): TurnState | null {
+    return this.phase === 'TURN' && !this.suspended ? this.turn : null;
+  }
+
+  cardCost(uid: number): number {
+    const c = this.deck.inHand(uid);
+    return c ? cardDef(c.defId).cost : Infinity;
+  }
+
+  canAfford(uid: number): boolean {
+    const t = this.turn;
+    return !!t && this.cardCost(uid) <= t.energy;
+  }
+
+  needsTarget(uid: number): boolean {
+    const c = this.deck.inHand(uid);
+    if (!c) return false;
+    return isWeaponId(c.defId) || (cardDef(c.defId) as SpellDef).target === 'tower';
+  }
+
+  /** Is `slot` a valid drop/target for the card? (unlocked socket for towers, a placed tower for Quicken) */
+  validTarget(uid: number, slot: number): boolean {
+    const c = this.deck.inHand(uid);
+    if (!c || slot < 0 || slot >= SLOT_COUNT || this.sim.locked[slot]) return false;
+    if (isWeaponId(c.defId)) return true;
+    return (cardDef(c.defId) as SpellDef).target === 'tower' && !!this.sim.slots[slot];
+  }
+
+  /** Select a card that needs a target (click), or clear the selection with null. */
+  select(uid: number | null): boolean {
+    const t = this.active();
+    if (!t || (t.stage !== 'idle' && t.stage !== 'targeting')) return false;
+    if (uid !== null && (!this.deck.inHand(uid) || !this.needsTarget(uid))) return false;
+    t.selected = uid;
+    t.stage = uid === null ? 'idle' : 'targeting';
+    this.emit({ type: 'selection', uid });
     return true;
   }
 
-  /** Return a selected/dragged card to the tray without consuming it. */
-  cancelSelection(): void {
-    const d = this.draft;
-    if (!d || (d.stage !== 'placing' && d.stage !== 'boonSelected' && d.stage !== 'confirmReplace')) return;
-    d.selected = null;
-    d.pendingSlot = null;
-    d.stage = 'choosing';
-    this.setPhase('DRAFT');
-    this.emit({ type: 'replacePreview', slot: null });
-    this.emit({ type: 'selection', index: null });
-  }
-
-  selectedCard(): CardId | null {
-    const d = this.draft;
-    return d && d.selected !== null ? d.offer[d.selected] : null;
-  }
-
-  /** Request placement of the selected weapon into a socket. Empty sockets commit immediately. */
-  requestPlace(slot: number): 'committed' | 'confirm' | 'rejected' {
-    const d = this.draft;
-    if (this.inputLocked() || !d || d.stage !== 'placing' || d.selected === null) return 'rejected';
-    if (slot < 0 || slot >= SLOT_COUNT) return 'rejected';
-    const card = d.offer[d.selected];
-    if (!isWeaponId(card)) return 'rejected';
-    if (this.sim.slots[slot]) {
-      d.stage = 'confirmReplace';
-      d.pendingSlot = slot;
-      this.emit({ type: 'replacePreview', slot });
-      return 'confirm';
+  /** Play a card from the hand. Towers and targeted actives need `slot`. */
+  playCard(uid: number, slot?: number): PlayResult {
+    const t = this.active();
+    if (!t || (t.stage !== 'idle' && t.stage !== 'targeting')) return 'invalid';
+    const card = this.deck.inHand(uid);
+    if (!card) return 'invalid';
+    const def = cardDef(card.defId);
+    if (def.cost > t.energy) return 'noEnergy';
+    if (this.needsTarget(uid)) {
+      if (slot === undefined) {
+        this.select(uid);
+        return 'needsTarget';
+      }
+      if (slot < 0 || slot >= SLOT_COUNT) return 'invalid';
+      if (this.sim.locked[slot]) return 'locked';
+      if (!this.validTarget(uid, slot)) return 'invalid';
+      if (def.type === 'tower' && this.sim.slots[slot]) {
+        t.stage = 'confirmReplace';
+        t.selected = uid;
+        t.pendingSlot = slot;
+        return 'confirm';
+      }
     }
-    this.commit(slot, card);
-    return 'committed';
+    this.commit(t, card, slot ?? null);
+    return 'played';
   }
 
   confirmReplace(): boolean {
-    const d = this.draft;
-    if (this.inputLocked() || !d || d.stage !== 'confirmReplace' || d.pendingSlot === null || d.selected === null) return false;
-    const card = d.offer[d.selected];
-    if (!isWeaponId(card)) return false;
-    this.commit(d.pendingSlot, card);
+    const t = this.active();
+    if (!t || t.stage !== 'confirmReplace' || t.selected === null || t.pendingSlot === null) return false;
+    const card = this.deck.inHand(t.selected);
+    if (!card || cardDef(card.defId).cost > t.energy) return false;
+    this.commit(t, card, t.pendingSlot);
     return true;
   }
 
-  /** Cancel replacement: the old weapon stays installed and the choice is unresolved again. */
-  cancelReplace(): void {
-    const d = this.draft;
-    if (!d || d.stage !== 'confirmReplace') return;
-    this.cancelSelection();
+  /** Cancel a pending replacement or target selection; the card stays in hand. */
+  cancel(): void {
+    const t = this.turn;
+    if (!t || (t.stage !== 'confirmReplace' && t.stage !== 'targeting')) return;
+    t.stage = 'idle';
+    t.selected = null;
+    t.pendingSlot = null;
+    this.emit({ type: 'selection', uid: null });
   }
 
-  private commit(slot: number, card: WeaponId): void {
-    const d = this.draft!;
-    const replaced = this.sim.slots[slot];
-    const instance = this.sim.installWeapon(slot, card); // atomic: old ownership removed, new at zero charge
-    const offerIndex = d.selected!;
-    d.stage = 'settling';
-    d.pendingSlot = null;
-    d.settleRemaining = SETTLE_SECONDS;
-    d.resolved = { card, slot };
-    this.emit({ type: 'replacePreview', slot: null });
-    this.emit({ type: 'committed', slot, instance, replaced, offerIndex });
+  private commit(t: TurnState, card: CardInstance, slot: number | null): void {
+    const def = cardDef(card.defId);
+    t.energy -= def.cost;
+    t.stage = 'idle';
+    t.selected = null;
+    t.pendingSlot = null;
+    t.marked = t.marked.filter((u) => u !== card.uid);
+    let instance: WeaponInstance | null = null;
+    let replaced: WeaponInstance | null = null;
+    if (def.type === 'tower') {
+      // placed towers leave the deck cycle; a replaced tower is destroyed
+      this.deck.takeFromHand(card.uid);
+      replaced = this.sim.slots[slot!];
+      instance = this.sim.installWeapon(slot!, def.id);
+    } else {
+      this.deck.discardFromHand(card.uid);
+      const e = def.effect;
+      if (e.kind === 'heal') this.sim.heal(e.amount);
+      else if (e.kind === 'blast') this.sim.pendingBlasts.push({ damage: e.damage, radius: e.radius });
+      else if (e.kind === 'charge') {
+        const w = this.sim.slots[slot!];
+        if (w) w.elapsed = WEAPONS[w.defId].interval;
+      } else if (e.kind === 'damageBonus') this.sim.damageBonus += e.amount;
+      else if (e.kind === 'slow') this.sim.speedFactor = Math.max(0.4, this.sim.speedFactor * e.factor);
+    }
+    this.emit({ type: 'cardPlayed', card, slot, instance, replaced });
   }
 
-  useBoon(): boolean {
-    const d = this.draft;
-    if (this.inputLocked() || !d || d.stage !== 'boonSelected' || d.selected === null) return false;
-    const card = d.offer[d.selected];
-    if (card === 'polish') {
-      this.sim.polishStacks = Math.min(BOON_TUNING.polishMaxStacks, this.sim.polishStacks + 1);
-    } else if (card === 'mend') {
-      this.sim.heal(BOON_TUNING.mendAmount);
-    } else return false;
-    d.stage = 'resolved';
-    d.resolved = { card, slot: null };
-    this.emit({ type: 'boonUsed', id: card, offerIndex: d.selected });
-    this.setPhase('DRAFT');
+  /** Right-click: toggle a card's sacrifice mark (at most two; a third replaces the oldest). */
+  toggleMark(uid: number): boolean {
+    const t = this.active();
+    if (!t || (t.stage !== 'idle' && t.stage !== 'targeting') || !this.deck.inHand(uid)) return false;
+    if (t.stage === 'targeting') this.cancel();
+    if (t.marked.includes(uid)) t.marked = t.marked.filter((u) => u !== uid);
+    else {
+      t.marked.push(uid);
+      if (t.marked.length > 2) t.marked.shift();
+    }
+    this.emit({ type: 'marked', uids: [...t.marked] });
     return true;
   }
 
-  canContinue(): boolean {
-    return !!this.draft && this.draft.stage === 'resolved' && !this.suspended;
+  clearMarks(): void {
+    const t = this.turn;
+    if (!t || t.marked.length === 0) return;
+    t.marked = [];
+    this.emit({ type: 'marked', uids: [] });
   }
 
-  continueRun(): boolean {
-    if (!this.canContinue()) return false;
-    this.draft = null;
-    this.sim.beginNextTrial();
+  /** Sacrifice the two marked cards; then one of three offers must be chosen. Unlimited per turn. */
+  sacrifice(): boolean {
+    const t = this.active();
+    if (!t || t.stage !== 'idle' || t.marked.length !== 2) return false;
+    const cards = t.marked.map((u) => this.deck.takeFromHand(u)).filter((c): c is CardInstance => !!c);
+    if (cards.length !== 2) return false;
+    t.marked = [];
+    t.offers = sacrificeOffers(this.offerRng, cards[0].defId, cards[1].defId);
+    t.stage = 'sacrificeChoice';
+    this.emit({ type: 'sacrificed', cards, offers: [...t.offers] });
+    this.emit({ type: 'marked', uids: [] });
+    return true;
+  }
+
+  chooseOffer(index: number): boolean {
+    const t = this.active();
+    if (!t || t.stage !== 'sacrificeChoice' || !t.offers || index < 0 || index >= t.offers.length) return false;
+    const card = this.deck.addToHand(t.offers[index]);
+    t.offers = null;
+    t.stage = 'idle';
+    this.emit({ type: 'offerChosen', card });
+    return true;
+  }
+
+  /** Purge the single marked card from the deck. Once per turn. */
+  purge(): boolean {
+    const t = this.active();
+    if (!t || t.stage !== 'idle' || t.marked.length !== 1 || t.purgesLeft <= 0) return false;
+    const card = this.deck.takeFromHand(t.marked[0]);
+    if (!card) return false;
+    t.marked = [];
+    t.purgesLeft--;
+    this.emit({ type: 'purged', card });
+    this.emit({ type: 'marked', uids: [] });
+    return true;
+  }
+
+  canEndTurn(): boolean {
+    const t = this.turn;
+    return this.phase === 'TURN' && !this.suspended && !!t && t.stage !== 'sacrificeChoice' && t.stage !== 'confirmReplace';
+  }
+
+  /** Discard the hand and resume combat with the next wave. */
+  endTurn(): boolean {
+    if (!this.canEndTurn()) return false;
+    const t = this.turn!;
+    const cards = this.deck.discardHand();
+    this.emit({ type: 'handDiscarded', cards });
+    if (t.turnIndex > 0) this.sim.beginNextTrial();
+    this.turn = null;
     this.setPhase('COMBAT');
     return true;
-  }
-
-  /** Presentation-time update (settle animation lock). Never advances simulation. */
-  updatePresentation(dt: number): void {
-    const d = this.draft;
-    if (!d || this.suspended) return;
-    if (d.stage === 'settling') {
-      d.settleRemaining -= dt;
-      if (d.settleRemaining <= 0) {
-        d.settleRemaining = 0;
-        d.stage = 'resolved';
-        this.setPhase('DRAFT');
-        this.emit({ type: 'settled' });
-      }
-    }
   }
 
   pause(): boolean {
@@ -298,13 +373,9 @@ export class PhaseController {
       this.pausedFrom = this.phase;
       this.pauseReason = 'suspended';
       this.setPhase('PAUSED');
-    } else if ((this.phase === 'DRAFT' || this.phase === 'PLACEMENT') && !this.suspended) {
+    } else if (this.phase === 'TURN' && !this.suspended) {
       this.suspended = true;
       this.emit({ type: 'suspended', value: true });
     }
-  }
-
-  cardName(id: CardId): string {
-    return cardDef(id).name;
   }
 }
