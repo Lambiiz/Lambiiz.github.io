@@ -1,0 +1,33 @@
+{
+  "name": "palimpsest",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "PALIMPSEST — a browser defense/deckbuilding vertical slice built with Three.js",
+  "license": "MIT",
+  "engines": {
+    "node": "^22.12.0 || >=24.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "balance": "vitest run tests/balance.report.test.ts --reporter=verbose",
+    "smoke": "node tools/smoke.mjs"
+  },
+  "dependencies": {
+    "@fontsource/cormorant-garamond": "5.3.0",
+    "@fontsource/inter": "5.3.0",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/three": "0.186.0",
+    "playwright": "1.56.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "5.0.3"
+  }
+}
