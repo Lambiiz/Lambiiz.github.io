@@ -896,7 +896,7 @@ export function drawCardIcon(id: CardId, size = 96): HTMLCanvasElement {
   const [c, ctx] = makeCanvas(size, size);
   paperGround(ctx, size, size, id.length * 13, '#cfc3a2');
   ctx.translate(size / 2, size / 2);
-  ctx.scale(size / 440, size / 440);
+  ctx.scale(size / 330, size / 330);
   ILLUSTRATIONS[id](ctx);
   return c;
 }
