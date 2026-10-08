@@ -1,6 +1,6 @@
 // All tunable gameplay data lives here. Values are starting hypotheses (balance is not tuned yet);
 // see docs/TUNING.md.
-import type { ActiveDef, ActiveId, CardDef, CardId, CardType, EnemyDef, EnemyKind, PassiveId, SpellDef, SpellId, StatMods, TrialDef, WeaponDef, WeaponId } from './types';
+import type { ActiveDef, ActiveId, CardDef, CardId, CardType, DustDef, EnemyDef, EnemyKind, PassiveId, SpellDef, SpellId, StatMods, TrialDef, WeaponDef, WeaponId } from './types';
 
 export const FIXED_DT = 1 / 60;
 export const MAX_FRAME_DELTA = 0.1;
@@ -26,10 +26,12 @@ export const TURN = {
   handDraw: 4,
   energyPerTurn: 6,
   purgesPerTurn: 1,
+  /** At the start of a turn the deck is topped up with Dust to at least this many cards. */
+  minDeckSize: 4,
 };
 
 /** Energy cost per card type at common rarity. */
-export const COST: Record<CardType, number> = { tower: 3, active: 1, passive: 1 };
+export const COST: Record<CardType, number> = { tower: 3, active: 1, passive: 1, dust: 0 };
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   needle: {
@@ -88,8 +90,9 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
 };
 
 /**
- * Passive cards are permanent run-wide modifiers. Active cards install a repeating effect with its
- * own cooldown; every extra copy divides that cooldown. Both leave the deck once played.
+ * Passive cards add a permanent run-wide modifier each time they are played, then go to the discard
+ * pile (so they come back and stack again). Active cards install a repeating effect with its own
+ * cooldown; every extra copy divides that cooldown; a played active leaves the deck.
  * Text markup: {+...} renders as a bonus (green), {-...} as a drawback (red).
  */
 export const SPELLS: Record<SpellId, SpellDef> = {
@@ -128,7 +131,12 @@ export const WEAPON_IDS: WeaponId[] = ['needle', 'light', 'thread', 'bell'];
 export const PASSIVE_IDS: PassiveId[] = ['swift', 'keen', 'farsight', 'sturdy'];
 export const ACTIVE_IDS: ActiveId[] = ['stray', 'mend'];
 export const SPELL_IDS: SpellId[] = [...PASSIVE_IDS, ...ACTIVE_IDS];
+/** Cards a sacrifice can offer. */
 export const CARD_IDS: CardId[] = [...WEAPON_IDS, ...SPELL_IDS];
+
+export const DUST: DustDef = { id: 'dust', name: 'Dust', type: 'dust', cost: COST.dust, rarity: 'common', summary: 'Does nothing. Sacrifice or purge it.' };
+/** Every card with a face (offers plus Dust). */
+export const ALL_CARD_IDS: CardId[] = [...CARD_IDS, 'dust'];
 
 /** 10 cards: one tower (always in the opening hand) and nine commons. */
 export const STARTING_DECK: CardId[] = ['needle', 'swift', 'swift', 'keen', 'keen', 'farsight', 'sturdy', 'stray', 'stray', 'mend'];
@@ -136,6 +144,7 @@ export const STARTING_DECK: CardId[] = ['needle', 'swift', 'swift', 'keen', 'kee
 export const NO_MODS: StatMods = { attackSpeed: 0, damage: 0, range: 0, maxIntegrity: 0 };
 
 export function cardDef(id: CardId): CardDef {
+  if (id === 'dust') return DUST;
   return (WEAPONS as Record<string, CardDef>)[id] ?? (SPELLS as Record<string, CardDef>)[id];
 }
 

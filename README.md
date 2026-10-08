@@ -63,10 +63,12 @@ Pages serves the `palimpsest` branch **directly from the repository root**: the 
 |---|---|---|
 | Tower | muted dark blue | seats in an open socket; fires automatically; leaves the deck. Playing a tower on an occupied socket asks to **Replace** — the old tower is destroyed. |
 | Active | muted dark red | permanent: a repeating effect with its own cooldown during waves, shown as an icon at the top right that fills like a tower. Every extra copy divides the cooldown (2 copies fire twice as often). Leaves the deck. |
-| Passive | muted dark brown | permanent run-wide modifier. Leaves the deck. |
+| Passive | muted dark brown | adds a permanent run-wide modifier each time it is played, then goes to the discard pile, so it comes back and stacks again. |
+| Dust | grey | filler that does nothing and cannot be played; only good for sacrifice (or purge). |
 
-Every played card leaves the deck for good, so the deck shrinks as your build grows; unplayed
-cards are discarded and come back when the draw pile is reshuffled.
+Played towers and actives leave the deck; passives and unplayed cards go to the discard pile and
+come back when the draw pile is reshuffled. **The deck never drops below 4 cards:** if it holds
+fewer when a turn starts, Dust is shuffled in until it has 4.
 
 **Sacrifice and purge.** Right-click cards to mark them (red outline).
 
@@ -104,7 +106,7 @@ Mend the Vessel.
 | Kindred Thread | 2.0 s, 9 → 7 → 5 chained through up to 3 foes, range 13 |
 | Mercy Bell | 2.8 s, 10 dmg to every foe within 8.5 of the Base |
 
-| Passive (permanent) | Effect |
+| Passive (permanent, card cycles back) | Effect |
 |---|---|
 | Quickened Pulse | +5% attack speed for all towers |
 | Sharpened Grief | +5% damage for all towers |
@@ -116,7 +118,7 @@ Mend the Vessel.
 | Stray Memory | every 4 s: strike a random foe for 50% of the average DPS of your placed towers |
 | Mend the Vessel | every 8 s: restore 5 Integrity |
 
-Modifiers add up (ten Quickened Pulses = +50% attack speed). DPS is damage per second against one
+Modifiers add up (ten plays of Quickened Pulse = +50% attack speed). DPS is damage per second against one
 foe per hit (a chain counts every hop). Actives hold when they have nothing to do (no foes, no
 towers, or full Integrity).
 
@@ -137,7 +139,8 @@ src/
   main.ts               lifecycle: render loop, fixed-step bridge, events → views, restart/teardown
   game/                 pure, deterministic, DOM/Three-free
     content.ts          ALL tuning data: towers, active/passive cards, costs, deck, foes, 8 waves
-    deck.ts             draw/hand/discard with reshuffle; opening-hand tower guarantee; sacrifice offers
+    deck.ts             draw/hand/discard with reshuffle; opening-hand tower guarantee; Dust top-up;
+                        sacrifice offers
     phases.ts           the single controller: TITLE/TURN/COMBAT/PAUSED/CLEARING/DEFEAT/VICTORY,
                         playing cards, energy, sacrifice, purge, end turn
     simulation.ts       fixed 1/60 s combat step (see below), soft collision, slot locks, wave modifiers
@@ -174,7 +177,7 @@ unchanged.
 
 ## Testing
 
-* `npm test` — 57 Vitest checks across `tests/simulation.test.ts`, `tests/deck.test.ts`,
+* `npm test` — 60 Vitest checks across `tests/simulation.test.ts`, `tests/deck.test.ts`,
   `tests/phases.test.ts` and the balance report.
 * `npm run smoke` — Playwright drives the real canvas and DOM through the turn loop, combat, pause,
   boundaries, replace, sacrifice/purge, suspension, defeat/victory/restart, resolutions, Low

@@ -779,6 +779,32 @@ function illusStray(ctx: Ctx): void {
   }
 }
 
+function illusDust(ctx: Ctx): void {
+  // a small grey heap of dust with a few motes drifting off it
+  ctx.beginPath();
+  ctx.moveTo(-170, 120);
+  ctx.quadraticCurveTo(-90, 20, -20, 10);
+  ctx.quadraticCurveTo(60, 0, 120, 70);
+  ctx.quadraticCurveTo(160, 100, 180, 120);
+  ctx.closePath();
+  ctx.fillStyle = '#8a837a';
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.save();
+  ctx.clip();
+  hatch(ctx, 0.5, 9, 1.2, 'rgba(27,34,52,0.25)', [-180, 0, 360, 130]);
+  ctx.restore();
+  const rnd = grainRng(63);
+  for (let i = 0; i < 40; i++) {
+    ctx.beginPath();
+    ctx.arc(-120 + rnd() * 260, -150 + rnd() * 150, 2 + rnd() * 5, 0, Math.PI * 2);
+    ctx.fillStyle = rnd() < 0.5 ? '#8a837a' : '#6a645c';
+    ctx.fill();
+  }
+}
+
 const ILLUSTRATIONS: Record<CardId, (ctx: Ctx) => void> = {
   needle: illusNeedle,
   light: illusLight,
@@ -790,6 +816,7 @@ const ILLUSTRATIONS: Record<CardId, (ctx: Ctx) => void> = {
   sturdy: illusSturdy,
   stray: illusStray,
   mend: illusMend,
+  dust: illusDust,
 };
 
 /** Muted type colours: towers dark blue, actives dark red, passives dark brown. */
@@ -797,6 +824,7 @@ export const TYPE_COLORS: Record<CardType, { frame: string; band: string; text: 
   tower: { frame: '#2f3d55', band: '#1d2638', text: '#d9d2bf', label: 'TOWER' },
   active: { frame: '#5c2b28', band: '#3a1916', text: '#e2d4c0', label: 'ACTIVE' },
   passive: { frame: '#54402a', band: '#33261a', text: '#e0d3bb', label: 'PASSIVE' },
+  dust: { frame: '#4a4642', band: '#2e2b28', text: '#d6d0c6', label: 'COMMON' },
 };
 
 export interface RichWord {

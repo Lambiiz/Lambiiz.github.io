@@ -73,7 +73,8 @@ for (;;) {
   }
   // 2. hunting a second tower: sacrifice two spare spells while a socket is still open
   s = await snap();
-  const spare = s.hand.filter((x) => !WEAPONS.includes(x.defId));
+  // Dust first: it is only good for sacrifice
+  const spare = s.hand.filter((x) => !WEAPONS.includes(x.defId)).sort((a, b) => (b.defId === 'dust') - (a.defId === 'dust'));
   if (open().length && spare.length >= 2) {
     for (const c of spare.slice(0, 2)) {
       const p = await cardAt(c.uid);
@@ -97,10 +98,10 @@ for (;;) {
       actions.push(`${(await snap()).slots[free[0]] ? 'placed' : 'FAILED to place'} ${got.defId} in socket ${free[0] + 1}`);
     }
   }
-  // 3. spend remaining energy on passives/actives by click (they are permanent)
+  // 3. spend remaining energy on passives/actives by click (Dust cannot be played)
   for (;;) {
     s = await snap();
-    const c = s.hand.find((x) => !WEAPONS.includes(x.defId));
+    const c = s.hand.find((x) => !WEAPONS.includes(x.defId) && x.defId !== 'dust');
     if (!c || s.turn.energy < 1) break;
     const p = await cardAt(c.uid);
     await page.mouse.click(p.x, p.y);

@@ -1,7 +1,8 @@
 // The run's Memory Deck: draw pile, hand and discard pile. Pure and seeded.
 // Rules: draw N per turn; when the draw pile runs out the discard pile is shuffled back in;
-// unplayed cards are discarded at the end of a turn. Played cards (towers, passives, actives),
-// sacrificed and purged cards leave the cycle entirely.
+// unplayed cards are discarded at the end of a turn. Played passives go to the discard pile; played
+// towers and actives, sacrificed and purged cards leave the cycle entirely. If the deck holds fewer
+// than the minimum at the start of a turn, Dust is shuffled into the draw pile.
 import { CARD_IDS, isWeaponId } from './content';
 import type { Rng } from './rng';
 import type { CardId, CardInstance } from './types';
@@ -86,6 +87,24 @@ export class Deck {
     return i < 0 ? undefined : this.hand.splice(i, 1)[0];
   }
 
+  /** A played passive goes to the discard pile. */
+  discardFromHand(uid: number): CardInstance | undefined {
+    const c = this.takeFromHand(uid);
+    if (c) this.discard.push(c);
+    return c;
+  }
+
+  /** Shuffle `defId` cards into the draw pile until the deck holds at least `min`. Returns them. */
+  topUp(min: number, defId: CardId): CardInstance[] {
+    const added: CardInstance[] = [];
+    while (this.size < min) {
+      const c = this.make(defId);
+      this.drawPile.splice(this.rng.int(this.drawPile.length + 1), 0, c);
+      added.push(c);
+    }
+    return added;
+  }
+
   /** Add a newly created card (from a sacrifice) to the hand. */
   addToHand(defId: CardId): CardInstance {
     const c = this.make(defId);
@@ -97,10 +116,11 @@ export class Deck {
 /**
  * Three distinct replacement offers for a sacrifice, drawn from every card type. If both sacrificed
  * cards are the same card, one offer is guaranteed to be that card (later: its upgraded variant).
+ * Dust is never offered.
  */
 export function sacrificeOffers(rng: Rng, a: CardId, b: CardId): CardId[] {
   const picks: CardId[] = [];
-  if (a === b) picks.push(a);
+  if (a === b && CARD_IDS.includes(a)) picks.push(a);
   const pool = CARD_IDS.filter((id) => !picks.includes(id));
   while (picks.length < 3 && pool.length > 0) picks.push(pool.splice(rng.int(pool.length), 1)[0]);
   for (let i = picks.length - 1; i > 0; i--) {

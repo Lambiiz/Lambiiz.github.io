@@ -109,13 +109,14 @@ async function toTurn(page) {
   // click-play a passive (fixture: guarantee a Sharpened Grief in hand)
   const spell = { uid: await api(page, () => __PALIMPSEST__.giveCard('keen')), defId: 'keen' };
   const deckBeforeSpell = s.deckSize + 1;
+  const discardBeforeSpell = s.discard;
   await settle(page, 0.8);
   await raiseHand(page);
   const sp = await cardPos(page, spell.uid);
   await page.mouse.click(sp.x, sp.y);
   await settle(page, 0.8);
   s = await snap(page);
-  check('Clicking a passive plays it for 1 energy, applies +5% damage permanently and removes it from the deck', s.turn.energy === 2 && !s.hand.some((c) => c.uid === spell.uid) && Math.abs(s.mods.damage - 0.05) < 1e-9 && s.deckSize === deckBeforeSpell - 1, { card: spell.defId, mods: s.mods });
+  check('Clicking a passive plays it for 1 energy, applies +5% damage permanently and sends the card to the discard pile', s.turn.energy === 2 && !s.hand.some((c) => c.uid === spell.uid) && Math.abs(s.mods.damage - 0.05) < 1e-9 && s.deckSize === deckBeforeSpell && s.discard === discardBeforeSpell + 1, { card: spell.defId, mods: s.mods });
 
   // the placed tower's tooltip shows modified stats (damage 6 -> 6.3) and no cost or charge
   const cs0 = await api(page, (i) => __PALIMPSEST__.cardScreen(i), open);
@@ -124,6 +125,17 @@ async function toTurn(page) {
   const tip = await page.textContent('#tooltip');
   check('Hovering a placed tower lists Damage, DPS, Attack speed, Range, Target and Projectiles with modifiers applied', /Damage\s*6\.3/.test(tip) && /DPS/.test(tip) && /Attack speed/.test(tip) && /Projectiles\s*1/.test(tip) && !/Cost|Charge|Socket/.test(tip), { tip });
   await page.mouse.move(5, 300);
+
+  // Dust cannot be played (fixture card)
+  const dustUid = await api(page, () => __PALIMPSEST__.giveCard('dust'));
+  await settle(page, 0.8);
+  await raiseHand(page);
+  const dp = await cardPos(page, dustUid);
+  await page.mouse.click(dp.x, dp.y);
+  await settle(page, 0.5);
+  check('Clicking Dust does not play it and costs nothing', (await snap(page)).hand.some((c) => c.uid === dustUid) && (await snap(page)).turn.energy === 2);
+  await api(page, (u) => window.__PALIMPSEST_APP__.controller.deck.takeFromHand(u), dustUid); // fixture cleanup
+  await settle(page, 0.5);
 
   // an active card adds a cooldown icon at the top of the screen (fixture card)
   const strayUid = await api(page, () => __PALIMPSEST__.giveCard('stray'));

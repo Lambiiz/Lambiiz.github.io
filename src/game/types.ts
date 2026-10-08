@@ -8,8 +8,10 @@ export type SpellId = PassiveId | ActiveId;
 /** Run-wide stat modifiers, as additive fractions (0.05 = +5%). */
 export type StatId = 'attackSpeed' | 'damage' | 'range' | 'maxIntegrity';
 export type StatMods = Record<StatId, number>;
-export type CardId = WeaponId | SpellId;
-export type CardType = 'tower' | 'active' | 'passive';
+/** Dust: a filler card added when the deck runs low. It cannot be played, only sacrificed or purged. */
+export type DustId = 'dust';
+export type CardId = WeaponId | SpellId | DustId;
+export type CardType = 'tower' | 'active' | 'passive' | 'dust';
 /** Only 'common' exists for now; higher rarities cost more energy later. */
 export type Rarity = 'common';
 export type EnemyKind = 'echo' | 'moth' | 'urn';
@@ -57,8 +59,13 @@ export interface ActiveDef extends CardBase {
   effect: ActiveEffect;
 }
 
+export interface DustDef extends CardBase {
+  id: DustId;
+  type: 'dust';
+}
+
 export type SpellDef = PassiveDef | ActiveDef;
-export type CardDef = WeaponDef | SpellDef;
+export type CardDef = WeaponDef | SpellDef | DustDef;
 
 /** A played active card: all copies share one cooldown that shortens with each copy. */
 export interface ActiveInstance {

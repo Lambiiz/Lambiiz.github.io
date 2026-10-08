@@ -8,7 +8,7 @@ import '@fontsource/inter/latin-600.css';
 import '@fontsource/inter/latin-700.css';
 import './ui/styles.css';
 import * as THREE from 'three';
-import { CARD_IDS, cardDef, FIXED_DT, isWeaponId, WEAPONS } from './game/content';
+import { ALL_CARD_IDS, cardDef, FIXED_DT, isWeaponId, WEAPONS } from './game/content';
 import { FixedStepClock } from './game/clock';
 import { PhaseController, type ControllerEvent, type PlayResult } from './game/phases';
 import { freshSeed } from './game/rng';
@@ -69,7 +69,7 @@ export class App {
     this.rig = new SceneRig(canvas);
     this.board = new BoardView(this.rig.renderer);
     this.assets = new CardAssets(this.rig.renderer);
-    this.assets.prepare(CARD_IDS);
+    this.assets.prepare(ALL_CARD_IDS);
     this.cards = new CardsView(this.assets);
     this.hand = new HandView(this.assets);
     this.enemies = new EnemiesView(this.rig.renderer);
@@ -170,6 +170,7 @@ export class App {
   play(uid: number, slot?: number): PlayResult {
     const res = this.controller.playCard(uid, slot);
     if (res === 'noEnergy') this.hud.toast('Not enough energy.');
+    else if (res === 'unplayable') this.hud.toast('Dust cannot be played. Sacrifice or purge it.');
     else if (res === 'locked') this.hud.toast('That socket is locked.');
     else if (res === 'invalid' && slot !== undefined) this.hud.toast(this.controller.deck.inHand(uid) && isWeaponId(this.controller.deck.inHand(uid)!.defId) ? 'Towers go into open sockets.' : 'Choose a placed tower.');
     return res;
@@ -221,6 +222,7 @@ export class App {
         break;
       case 'turnStarted':
         this.audio.cardPick();
+        if (e.dustAdded.length) this.hud.toast(`Your deck was thin: ${e.dustAdded.length} Dust ${e.dustAdded.length === 1 ? 'was' : 'were'} added.`, 3);
         break;
       case 'cardPlayed': {
         const def = cardDef(e.card.defId);
@@ -232,7 +234,7 @@ export class App {
             this.audio.cardPlace();
           });
         } else {
-          this.hand.animateLeave(e.card.uid, 'play');
+          this.hand.animateLeave(e.card.uid, def.type === 'passive' ? 'discard' : 'play');
           this.audio.boon();
           this.board.emitterPulse(1);
           this.effects.landing(new THREE.Vector3(0, LID_TOP, 0));

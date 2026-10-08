@@ -357,6 +357,10 @@ button.danger {
   background: var(--passive);
 }
 
+.tt-head.tt-dust {
+  background: #4a4642;
+}
+
 .tt-name {
   font-family: var(--serif);
   font-size: 21px;

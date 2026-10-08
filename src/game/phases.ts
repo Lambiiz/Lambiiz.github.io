@@ -24,12 +24,12 @@ export interface TurnState {
   offers: CardId[] | null;
 }
 
-export type PlayResult = 'played' | 'needsTarget' | 'confirm' | 'noEnergy' | 'locked' | 'invalid';
+export type PlayResult = 'played' | 'needsTarget' | 'confirm' | 'noEnergy' | 'locked' | 'unplayable' | 'invalid';
 
 export type ControllerEvent =
   | { type: 'phase'; from: Phase; to: Phase }
   | { type: 'runStarted'; seed: number }
-  | { type: 'turnStarted'; turnIndex: number; drawn: CardInstance[] }
+  | { type: 'turnStarted'; turnIndex: number; drawn: CardInstance[]; dustAdded: CardInstance[] }
   | { type: 'cardPlayed'; card: CardInstance; slot: number | null; instance: WeaponInstance | null; replaced: WeaponInstance | null }
   | { type: 'sacrificed'; cards: CardInstance[]; offers: CardId[] }
   | { type: 'offerChosen'; card: CardInstance }
@@ -138,9 +138,10 @@ export class PhaseController {
       purgesLeft: TURN.purgesPerTurn,
       offers: null,
     };
+    const dustAdded = this.deck.topUp(TURN.minDeckSize, 'dust');
     const drawn = turnIndex === 0 ? this.deck.drawOpening(TURN.handDraw) : this.deck.draw(TURN.handDraw);
     this.setPhase('TURN');
-    this.emit({ type: 'turnStarted', turnIndex, drawn });
+    this.emit({ type: 'turnStarted', turnIndex, drawn, dustAdded });
   }
 
   /** Forecast for the wave that follows the current turn. */
@@ -167,7 +168,13 @@ export class PhaseController {
 
   canAfford(uid: number): boolean {
     const t = this.turn;
-    return !!t && this.cardCost(uid) <= t.energy;
+    return !!t && this.isPlayable(uid) && this.cardCost(uid) <= t.energy;
+  }
+
+  /** Dust can only be sacrificed or purged. */
+  isPlayable(uid: number): boolean {
+    const c = this.deck.inHand(uid);
+    return !!c && c.defId !== 'dust';
   }
 
   /** Only tower cards need a target (an open socket). */
@@ -201,6 +208,7 @@ export class PhaseController {
     const card = this.deck.inHand(uid);
     if (!card) return 'invalid';
     const def = cardDef(card.defId);
+    if (def.type === 'dust') return 'unplayable';
     if (def.cost > t.energy) return 'noEnergy';
     if (this.needsTarget(uid)) {
       if (slot === undefined) {
@@ -254,11 +262,14 @@ export class PhaseController {
       this.deck.takeFromHand(card.uid);
       replaced = this.sim.slots[slot!];
       instance = this.sim.installWeapon(slot!, def.id);
-    } else {
-      // passives and actives are permanent: the card leaves the deck and its effect stays all run
+    } else if (def.type === 'passive') {
+      // the modifier is permanent and the card cycles back through the discard pile to stack again
+      this.deck.discardFromHand(card.uid);
+      this.sim.addStat(def.stat, def.amount);
+    } else if (def.type === 'active') {
+      // an active stays in play all run (more copies shorten its cooldown) and leaves the deck
       this.deck.takeFromHand(card.uid);
-      if (def.type === 'passive') this.sim.addStat(def.stat, def.amount);
-      else this.sim.addActive(def.id);
+      this.sim.addActive(def.id);
     }
     this.emit({ type: 'cardPlayed', card, slot, instance, replaced });
   }

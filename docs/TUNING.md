@@ -2,7 +2,7 @@
 
 All gameplay numbers live in `src/game/content.ts`: towers, passive cards (stat and amount per
 copy), active cards (cooldown and effect), costs (`COST`), turn rules (`TURN`: draw 4, 6 energy,
-1 purge), the starting deck, sockets open at the start (`SLOTS_UNLOCKED_AT_START`), foes, soft
+1 purge, minimum deck size 4 topped up with Dust), the starting deck, sockets open at the start (`SLOTS_UNLOCKED_AT_START`), foes, soft
 collision (`CROWD`) and the eight wave definitions. How modifiers turn into tower numbers lives in
 `src/game/stats.ts` (attack speed divides the interval, damage and range multiply, Stray Memory
 uses the average DPS of the placed towers). Quality presets live in `src/view/quality.ts`. Difficulty never reacts to the player's
@@ -28,15 +28,16 @@ which engaging with sacrifice matters.
 
 | policy | wins | peak foes on board | Integrity after waves 1–7 | losses by wave |
 |---|---:|---:|---|---|
-| simple (never sacrifices, so never gets a 2nd tower) | 0 | 38 | 102 105 105 76 5 0 0 | 0 0 0 0 15 5 0 0 |
-| seeker (sacrifices spare cards hoping for a tower) | 7 | 39 | 100 103 104 103 82 53 57 | 0 0 0 0 0 5 1 7 |
+| simple (never sacrifices, so never gets a 2nd tower) | 0 | 39 | 102 105 107 103 38 4 7 | 0 0 0 0 2 13 0 5 |
+| seeker (sacrifices spare cards hoping for a tower) | 20 | 32 | 100 103 105 107 107 105 112 | 0 0 0 0 0 0 0 0 |
 
 (Both policies play every passive and active card they can afford; Integrity can exceed 100 once
 Sturdy Vessel raises the cap.)
 
-Reading it: with only two open sockets the main lever is getting a second, complementary tower
-through sacrifice; permanent passives and actives compound over the run. Because played cards
-leave the deck, later turns draw from a thin deck, which makes sacrifice offers matter more. Slot unlocks (future) are the
+Reading it: since passives cycle back through the discard pile and stack again every time they
+are played, a player who finds a second tower now wins every seeded run — the waves are too easy
+for a recycling passive build and need retuning upward (deliberately left for the balance pass).
+Without a second tower the run still collapses around wave 5–6. Slot unlocks (future) are the
 natural next lever; once they exist, the spawn schedule should be retuned upward.
 
 ## Spawn schedule (enemies per second, interpolated across each 30 s wave)

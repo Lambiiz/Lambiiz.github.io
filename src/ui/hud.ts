@@ -94,7 +94,7 @@ export interface DetailContext {
  */
 export function detailHtml(id: CardId, ctx: DetailContext): string {
   const d = cardDef(id);
-  const typeName = { tower: 'Tower', active: 'Active · repeats during waves', passive: 'Passive · permanent' }[d.type];
+  const typeName = { tower: 'Tower', active: 'Active · repeats during waves', passive: 'Passive · permanent, card returns to discard', dust: 'Common · filler' }[d.type];
   let body = `<div class="tt-body">${richHtml(d.summary)}</div>`;
   const rows: [string, string][] = [];
   if (d.type === 'tower') {
@@ -109,6 +109,8 @@ export function detailHtml(id: CardId, ctx: DetailContext): string {
   } else if (d.type === 'passive') {
     const total = ctx.mods[d.stat];
     rows.push([`${STAT_LABEL[d.stat]} now`, total > 0 ? `<span class="pos">+${fmt(total * 100)}%</span>` : '+0%']);
+  } else if (d.type === 'dust') {
+    rows.push(['Play', 'cannot be played']);
   } else {
     const a = d as ActiveDef;
     const have = ctx.activeCounts[a.id] ?? 0;

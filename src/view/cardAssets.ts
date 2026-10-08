@@ -27,7 +27,7 @@ function remapUv(geo: THREE.BufferGeometry, w: number, h: number): void {
   for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) + w / 2) / w, (uv.getY(i) + h / 2) / h);
 }
 
-const EDGE_COLORS: Record<CardType, number> = { tower: 0x3a4a66, active: 0x6e3430, passive: 0x6a5034 };
+const EDGE_COLORS: Record<CardType, number> = { tower: 0x3a4a66, active: 0x6e3430, passive: 0x6a5034, dust: 0x5a5650 };
 
 export class CardAssets {
   readonly bodyGeo: THREE.ExtrudeGeometry;

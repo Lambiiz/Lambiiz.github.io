@@ -92,7 +92,7 @@ describe('turn loop', () => {
     expect(c.turn!.energy).toBe(0);
   });
 
-  it('passives and actives apply permanently and leave the deck', () => {
+  it('passives stack permanently and go to the discard pile; actives and towers leave the deck', () => {
     const deck: CardId[] = ['needle', 'swift', 'keen', 'sturdy', 'stray'];
     const c = newRun(6, { deck });
     expect(c.deck.hand.length).toBe(4);
@@ -105,9 +105,42 @@ describe('turn loop', () => {
       expect(c.sim.baseHp).toBeCloseTo(105); // the added max Integrity is restored
     }
     if (hand.includes('stray')) expect(c.sim.actives).toEqual([{ defId: 'stray', count: 1, elapsed: 0, uses: 0 }]);
-    // played cards are gone from the deck for good
-    expect(c.deck.size).toBe(deck.length - hand.length);
-    expect(c.deck.discard.length).toBe(0);
+    const passives = hand.filter((id) => cardDef(id).type === 'passive');
+    const gone = hand.filter((id) => cardDef(id).type !== 'passive');
+    expect(c.deck.discard.map((x) => x.defId).sort()).toEqual([...passives].sort());
+    expect(c.deck.size).toBe(deck.length - gone.length);
+  });
+
+  it('a passive played again stacks again', () => {
+    const c = newRun(6, { deck: ['needle', 'keen'] });
+    c.playCard(uidOf(c, 'keen'));
+    c.endTurn();
+    runUntilFrozen(c);
+    // the deck held 2 (< 4): the keen came back from the discard pile, plus Dust
+    c.playCard(uidOf(c, 'keen'));
+    expect(c.sim.mods.damage).toBeCloseTo(0.1);
+  });
+
+  it('a deck below 4 cards is topped up with Dust at the start of a turn', () => {
+    const c = newRun(6, { deck: ['needle', 'keen'] });
+    expect(c.deck.size).toBe(TURN.minDeckSize);
+    expect([...c.deck.drawPile, ...c.deck.hand].filter((x) => x.defId === 'dust').length).toBe(2);
+    expect(handIds(c)).toContain('needle'); // the opening tower guarantee still holds
+  });
+
+  it('Dust cannot be played, but can be sacrificed or purged, and is never offered', () => {
+    const c = newRun(6, { deck: ['needle', 'dust', 'dust', 'dust'] });
+    const dust = c.deck.hand.filter((x) => x.defId === 'dust');
+    expect(c.canAfford(dust[0].uid)).toBe(false);
+    expect(c.playCard(dust[0].uid)).toBe('unplayable');
+    expect(c.turn!.energy).toBe(TURN.energyPerTurn);
+    c.toggleMark(dust[0].uid);
+    c.toggleMark(dust[1].uid);
+    expect(c.sacrifice()).toBe(true);
+    expect(c.turn!.offers).not.toContain('dust'); // a Dust pair guarantees nothing
+    c.chooseOffer(0);
+    c.toggleMark(dust[2].uid);
+    expect(c.purge()).toBe(true);
   });
 
   it('spells never need a target', () => {
