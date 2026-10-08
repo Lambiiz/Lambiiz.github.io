@@ -12,7 +12,7 @@ export interface QualitySettings {
 }
 
 export const QUALITY: Record<QualityLevel, QualitySettings> = {
-  high: { maxPixelRatio: 1.5, shadowMapSize: 2048, bloom: true, bloomStrength: 0.42, msaaSamples: 4, particleBudget: 1200, dustCount: 260 },
+  high: { maxPixelRatio: 1.5, shadowMapSize: 2048, bloom: true, bloomStrength: 0.3, msaaSamples: 4, particleBudget: 1200, dustCount: 260 },
   low: { maxPixelRatio: 1.0, shadowMapSize: 1024, bloom: false, bloomStrength: 0, msaaSamples: 2, particleBudget: 500, dustCount: 90 },
 };
 

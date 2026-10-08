@@ -35,6 +35,7 @@ interface Visual {
   radius: number;
   phase: number;
   lastHitAt: number;
+  liftAt: number;
   diedAt: number | null;
   arrived: boolean;
   seen: boolean;
@@ -300,6 +301,7 @@ export class EnemiesView {
       if (vis) {
         vis.lastHitAt = ev.t;
         vis.hp = ev.hp;
+        if (ev.source === 'bell') vis.liftAt = ev.t; // gentle radial lift, visual only
       }
     } else if (ev.type === 'died') {
       const vis = this.visuals.get(ev.enemyId);
@@ -363,6 +365,7 @@ export class EnemiesView {
           radius: en.radius,
           phase: (en.id * 2.399) % (Math.PI * 2),
           lastHitAt: -100,
+          liftAt: -100,
           diedAt: null,
           arrived: false,
           seen: true,
@@ -403,7 +406,9 @@ export class EnemiesView {
       const back = hit * 0.08;
       const dirX = -Math.sin(yaw) * back;
       const dirZ = -Math.cos(yaw) * back;
-      compose(rootM, vis.x + dirX, -sink, vis.z + dirZ, 0, yaw + spin, 0, sc);
+      const liftAge = simTime - vis.liftAt;
+      const lift = liftAge >= 0 && liftAge < 0.45 ? Math.sin((liftAge / 0.45) * Math.PI) * 0.28 : 0;
+      compose(rootM, vis.x + dirX, -sink + lift, vis.z + dirZ, 0, yaw + spin, 0, sc);
       for (const p of a.parts) {
         p.local(partM, simTime, vis.phase, hit);
         tmpM.multiplyMatrices(rootM, partM);

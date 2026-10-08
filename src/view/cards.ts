@@ -1,6 +1,7 @@
 // Physical card views: beveled bodies with engraved faces, per-card charge overlays,
 // spring-driven placement, the draft tray, drag, discard and boon dissolution.
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { cardDef } from '../game/content';
 import type { CardId, WeaponInstance } from '../game/types';
 import * as art from './art';
@@ -78,6 +79,10 @@ export class CardsView {
   private renderer: THREE.WebGLRenderer;
   private dimLevel = 1;
   private shared: { dispose(): void }[] = [];
+  /** Raised near-edge tray rail that the offered cards rest on during drafts. */
+  private rail: THREE.Group;
+  private railLevel = 0;
+  private railTarget = 0;
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer;
@@ -92,6 +97,27 @@ export class CardsView {
     const shTex = art.colorTexture(art.drawRadial('rgba(0,0,0,0.55)', 'rgba(0,0,0,0)', 128), renderer);
     this.shadowMat = new THREE.MeshBasicMaterial({ map: shTex, transparent: true, depthWrite: false });
     this.shared.push(this.bodyGeo, this.faceGeo, this.edgeMat, edgeTex, this.shadowGeo, this.shadowMat, shTex);
+
+    const railBrass = new THREE.MeshStandardMaterial({ color: 0xc8ab70, metalness: 0.85, roughness: 0.36 });
+    const railEnamel = new THREE.MeshStandardMaterial({ color: 0x1a2846, metalness: 0.1, roughness: 0.3 });
+    const railGeo = new RoundedBoxGeometry(TRAY.spacing * 3 + 0.6, 0.18, 0.55, 3, 0.07);
+    const inlayGeo = new RoundedBoxGeometry(TRAY.spacing * 3 + 0.2, 0.04, 0.22, 2, 0.02);
+    this.rail = new THREE.Group();
+    const railMesh = new THREE.Mesh(railGeo, railBrass);
+    railMesh.castShadow = true;
+    const inlay = new THREE.Mesh(inlayGeo, railEnamel);
+    inlay.position.y = 0.09;
+    this.rail.add(railMesh, inlay);
+    const h = (CARD_H * TRAY.scale) / 2;
+    this.rail.position.set(0, -1, TRAY.z + h * Math.cos(TRAY.tilt) + 0.1);
+    this.rail.visible = false;
+    this.root.add(this.rail);
+    this.shared.push(railBrass, railEnamel, railGeo, inlayGeo);
+  }
+
+  /** Raise or lower the draft tray rail (presentation only). */
+  setTray(active: boolean): void {
+    this.railTarget = active ? 1 : 0;
   }
 
   /** Face material per definition, generated and cached once (fonts must already be loaded). */
@@ -384,6 +410,11 @@ export class CardsView {
    */
   update(presentDt: number, simTime: number, charge: Map<number, number>): void {
     const dt = Math.min(presentDt, 0.05);
+    this.railLevel += (this.railTarget - this.railLevel) * (1 - Math.exp(-dt * 7));
+    this.rail.visible = this.railLevel > 0.01;
+    const h = (CARD_H * TRAY.scale) / 2;
+    const railTop = TRAY.y - h * Math.sin(-TRAY.tilt) - 0.1;
+    this.rail.position.y = -0.8 + (railTop + 0.8) * this.railLevel;
     for (const v of [...this.cards.values()]) {
       if (v.delay > 0) {
         v.delay -= dt;

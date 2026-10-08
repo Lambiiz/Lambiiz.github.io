@@ -63,7 +63,8 @@ export function installDevApi(app: App): void {
     },
     install(slot: number, defId: WeaponId, charge = 0) {
       const w = app.controller.sim.installWeapon(slot, defId);
-      w.elapsed = charge * (app.controller.sim.slots[slot] ? 1 : 0) * ({ needle: 1.2, light: 3.0, thread: 2.4, bell: 3.2 }[defId] ?? 1);
+      w.elapsed = charge * ({ needle: 1.2, light: 3.0, thread: 2.4, bell: 3.2 }[defId] ?? 1);
+      app.cards.reset(); // fixture: snap every card into its socket without discard animations
       app.cards.syncEquipped(app.controller.sim.slots, true);
       return w.id;
     },
@@ -107,6 +108,36 @@ export function installDevApi(app: App): void {
     /** Advance presentation-only motion (card springs, camera transitions); simulation untouched. */
     settle(seconds = 1) {
       app.settlePresentation(seconds);
+    },
+    /**
+     * Deterministic attack capture pose: six weapons vs a ring of durable foes; advance fixed ticks
+     * until `slot`'s weapon fired `ticksAfter` ticks ago, then freeze presentation for a screenshot.
+     */
+    attackPose(slot = 1, ticksAfter = 3, seed = 51) {
+      app.restart(seed);
+      const sim = app.controller.sim;
+      sim.spawningEnabled = false;
+      sim.baseHp = 100000;
+      const kit: WeaponId[] = ['needle', 'light', 'thread', 'bell', 'needle', 'thread'];
+      kit.forEach((id, i) => sim.installWeapon(i, id));
+      app.cards.reset();
+      app.cards.syncEquipped(sim.slots, true);
+      for (let i = 0; i < 12; i++) {
+        const a = i * 0.52 + 0.4;
+        const r = 5.0 + (i % 3) * 0.55;
+        const e = sim.spawnEnemy(ENEMY_KINDS[i % 3], Math.cos(a) * r, Math.sin(a) * r, 1);
+        e.hp = e.maxHp = e.maxHp * 12;
+        e.speed = 0.05;
+      }
+      const w = sim.slots[slot]!;
+      let guard = 0;
+      while (guard++ < 2000) {
+        app.advanceTicks(1);
+        if (w.shots >= 1 && Math.round(w.elapsed / (1 / 60)) === ticksAfter) break;
+      }
+      app.capture = true;
+      document.body.classList.add('capture');
+      return { ticks: sim.tick, shots: w.shots };
     },
     setCapture(on: boolean) {
       app.capture = on;
@@ -159,6 +190,8 @@ export function installDevApi(app: App): void {
         avgMs: +avg.toFixed(2),
         p95Ms: +(sorted[Math.floor(sorted.length * 0.95)] ?? 0).toFixed(2),
         maxMs: +(sorted[sorted.length - 1] ?? 0).toFixed(2),
+        updateMs: +(app.cpuTimes.reduce((s, x) => s + x[0], 0) / Math.max(1, app.cpuTimes.length)).toFixed(2),
+        renderSubmitMs: +(app.cpuTimes.reduce((s, x) => s + x[1], 0) / Math.max(1, app.cpuTimes.length)).toFixed(2),
         dpr: app.rig.renderer.getPixelRatio(),
         quality: app.rig.quality,
         viewport: app.rig.viewport,

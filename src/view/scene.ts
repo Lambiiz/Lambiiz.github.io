@@ -119,7 +119,7 @@ export class SceneRig {
     this.renderTarget.texture.name = 'palimpsest.hdr';
     this.composer = new EffectComposer(this.renderer, this.renderTarget);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.42, 0.38, 1.05);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.3, 0.28, 1.1);
     this.composer.addPass(this.bloom);
     this.output = new OutputPass();
     this.composer.addPass(this.output);

@@ -278,6 +278,22 @@ button.danger {
   background: linear-gradient(90deg, transparent, var(--brass), transparent);
 }
 
+/* endings keep the ceremony visible: the plate sits low over a light vignette */
+#end-overlay {
+  align-items: flex-end;
+  padding-bottom: 28px;
+  background: linear-gradient(180deg, rgba(5, 8, 15, 0) 40%, rgba(5, 8, 15, 0.75));
+}
+
+#end-overlay .plate {
+  padding: 20px 34px 18px;
+}
+
+#end-overlay .plate h2 {
+  font-size: 38px;
+  margin-bottom: 4px;
+}
+
 #end-overlay.defeat h2 {
   color: var(--coral);
 }

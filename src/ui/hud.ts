@@ -282,6 +282,8 @@ export class Hud {
     const ended = s.phase === 'DEFEAT' || s.phase === 'VICTORY';
     this.el['end-overlay'].classList.toggle('hidden', !ended);
     if (ended && phaseChanged) {
+      this.el.toast.classList.add('hidden');
+      this.toastTimer = 0;
       const win = s.phase === 'VICTORY';
       this.el['end-overlay'].className = `overlay ${win ? 'victory' : 'defeat'}`;
       this.el['end-title'].textContent = win ? 'Returned to Life' : 'The Vessel Breaks';

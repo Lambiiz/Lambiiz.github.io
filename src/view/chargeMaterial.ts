@@ -71,8 +71,9 @@ void main() {
   vec3 emissive = uHot * (meniscus * 2.4 + edge * 0.55 + fil * 0.16);
 
   // release pulse on a real fire event (bounded, decays in simulation time)
-  emissive += uHot * uPulse * (0.9 * inside + 1.4 * (1.0 - smoothstep(0.0, 0.1, -d)) * inside);
-  a = max(a, uPulse * 0.22 * inside);
+  // edge-weighted so the artwork never washes out
+  emissive += uHot * uPulse * (0.22 * inside + 1.2 * (1.0 - smoothstep(0.0, 0.09, -d)) * inside);
+  a = max(a, uPulse * 0.18 * inside);
 
   // selection / inspection outline (presentation only)
   float ring = (1.0 - smoothstep(0.0, 0.028, abs(d + 0.012))) * uSelect;

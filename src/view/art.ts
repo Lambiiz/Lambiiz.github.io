@@ -881,6 +881,33 @@ export function drawLidEnamel(w = 1560, h = 1400): HTMLCanvasElement {
   return c;
 }
 
+/** Engraved brass name-plate for the ceramic body (glyph chain between soul glyphs). */
+export function drawMedallion(): HTMLCanvasElement {
+  const [c, ctx] = makeCanvas(768, 216);
+  ctx.clearRect(0, 0, 768, 216);
+  const g = ctx.createLinearGradient(0, 0, 0, 216);
+  g.addColorStop(0, '#dcc48f');
+  g.addColorStop(0.5, '#b59a63');
+  g.addColorStop(1, '#7e6438');
+  ctx.fillStyle = g;
+  roundRectPath(ctx, 8, 8, 752, 200, 100);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(40,28,10,0.8)';
+  ctx.lineWidth = 4;
+  roundRectPath(ctx, 22, 22, 724, 172, 86);
+  ctx.stroke();
+  soulGlyph(ctx, 110, 108, 52, 'rgba(40,28,10,0.85)', 3);
+  soulGlyph(ctx, 658, 108, 52, 'rgba(40,28,10,0.85)', 3);
+  for (let i = 0; i < 7; i++) lozenge(ctx, 234 + i * 50, 108, 22, 'rgba(40,28,10,0.75)', 3);
+  ctx.beginPath();
+  ctx.ellipse(384, 108, 30, 30, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#1b2a48';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(40,28,10,0.9)';
+  ctx.stroke();
+  return c;
+}
+
 export function drawSocketFloor(): HTMLCanvasElement {
   const [c, ctx] = makeCanvas(256, 340);
   const g = ctx.createRadialGradient(128, 170, 20, 128, 170, 200);

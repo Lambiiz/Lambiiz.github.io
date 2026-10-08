@@ -5,13 +5,14 @@ import * as THREE from 'three';
 import type { ProjectileState, SimEvent, Vec2, WeaponId } from '../game/types';
 import { Rng } from '../game/rng';
 import { EMITTER_POS, LID_TOP } from '../view/layout';
+import { footprintGap } from '../game/simulation';
 import * as art from '../view/art';
 
 const hdr = (hex: number, k: number) => new THREE.Color(hex).multiplyScalar(k);
 
 export const WEAPON_COLORS: Record<WeaponId, THREE.Color> = {
   needle: hdr(0x69dad0, 3.0),
-  light: hdr(0xf3dfae, 4.0),
+  light: hdr(0xf3dfae, 3.0),
   thread: hdr(0x7fa8ff, 3.2),
   bell: hdr(0xe8a07a, 2.6),
 };
@@ -134,8 +135,9 @@ varying vec2 vUv;
 void main() {
   float r = length(vUv - 0.5) * 2.0;
   float ring = exp(-pow((r - (1.0 - uWidth)) / uWidth, 2.0));
-  float inner = smoothstep(0.0, 1.0, r) * 0.18 * (1.0 - smoothstep(0.92, 1.0, r));
-  float a = (ring + inner) * uAlpha;
+  // soft trailing ripple just inside the crest (no filled disc)
+  float trail = exp(-pow((r - (1.0 - uWidth * 2.5)) / (uWidth * 1.5), 2.0)) * 0.22;
+  float a = (ring + trail) * uAlpha;
   if (a <= 0.002) discard;
   gl_FragColor = vec4(uColor * a, a);
 }`;
@@ -384,8 +386,8 @@ export class Effects {
       this.shards.push({ active: false, born: 0, life: 1, p: new THREE.Vector3(), v: new THREE.Vector3(), rot: new THREE.Euler(), spin: new THREE.Vector3(), size: 1, bounced: false, color: new THREE.Color() });
 
     // needle projectiles: tapered head + ribbon-like trail quad
-    const headGeo = new THREE.OctahedronGeometry(0.09, 0);
-    headGeo.scale(0.6, 0.6, 3.2);
+    const headGeo = new THREE.OctahedronGeometry(0.11, 0);
+    headGeo.scale(0.7, 0.7, 4.2);
     const headMat = new THREE.MeshBasicMaterial({ color: WEAPON_COLORS.needle.clone().multiplyScalar(1.3) });
     this.needleHeads = new THREE.InstancedMesh(headGeo, headMat, 96);
     this.needleHeads.count = 0;
@@ -588,7 +590,7 @@ export class Effects {
       r.active = true;
       r.born = t;
       r.life = 0.34;
-      r.width = 0.2;
+      r.width = 0.16;
       r.color.copy(WEAPON_COLORS.light);
       r.revealTime = 0.05;
       r.flicker = 0;
@@ -602,7 +604,7 @@ export class Effects {
       core.born = t;
       core.life = 0.26;
       core.width = 0.06;
-      core.color.setRGB(6, 5.6, 4.6);
+      core.color.setRGB(4, 3.7, 3.1);
       core.revealTime = 0.05;
       core.flicker = 0;
       core.presentation = false;
@@ -649,31 +651,46 @@ export class Effects {
   }
 
   private bell(t: number): void {
+    // a small ring leaves the emitter above the lid ...
+    const c = this.ring();
+    if (c) {
+      c.active = true;
+      c.born = t;
+      c.life = 0.22;
+      c.r0 = 0.25;
+      c.r1 = 1.3;
+      c.presentation = false;
+      c.alpha = 1;
+      c.mat.uniforms.uColor.value.copy(WEAPON_COLORS.bell);
+      c.mat.uniforms.uWidth.value = 0.08;
+      c.mesh.position.set(EMITTER_POS.x, LID_TOP + 0.08, EMITTER_POS.z);
+    }
+    // ... and the thin pulse ring sweeps outward from the Base walls to the full 6.8 radius
     const a = this.ring();
     if (a) {
       a.active = true;
       a.born = t;
-      a.life = 0.46;
-      a.r0 = 0.6;
+      a.life = 0.42;
+      a.r0 = 3.6;
       a.r1 = 6.8;
       a.presentation = false;
       a.alpha = 1;
       a.mat.uniforms.uColor.value.copy(WEAPON_COLORS.bell);
-      a.mat.uniforms.uWidth.value = 0.035;
-      a.mesh.position.set(0, LID_TOP * 0.15 + 0.05, 0);
+      a.mat.uniforms.uWidth.value = 0.03;
+      a.mesh.position.set(0, 0.07, 0);
     }
     const b = this.ring();
     if (b) {
       b.active = true;
       b.born = t + 0.06;
-      b.life = 0.7;
-      b.r0 = 0.4;
-      b.r1 = 4.6;
+      b.life = 0.65;
+      b.r0 = 3.4;
+      b.r1 = 5.6;
       b.presentation = false;
-      b.alpha = 0.4;
+      b.alpha = 0.5;
       b.mat.uniforms.uColor.value.copy(hdr(0xf2d79a, 1.6));
-      b.mat.uniforms.uWidth.value = 0.12;
-      b.mesh.position.set(0, 0.06, 0);
+      b.mat.uniforms.uWidth.value = 0.05;
+      b.mesh.position.set(0, 0.05, 0);
     }
     this.burst(this.emitterVec(), WEAPON_COLORS.bell, 14, 1.8, t, 0.09, 0.6, -1.0);
   }
@@ -839,12 +856,14 @@ export class Effects {
       const dz = p.z - p.prevZ;
       const yaw = Math.atan2(dx, dz);
       const age = simTime - p.bornAt;
-      const y = 0.9 + Math.max(0, 0.45 - age * 3) * 0.6; // rises from the emitter height
+      // leaves the emitter above the lid, then descends to body height once clear of the Base
+      const gap = footprintGap(x, z);
+      const y = Math.max(0.9, EMITTER_POS.y - gap * 0.5);
       qq.setFromEuler(new THREE.Euler(0, yaw, 0));
       tmp.compose(new THREE.Vector3(x, y, z), qq, new THREE.Vector3(1, 1, 1));
       this.needleHeads.setMatrixAt(np, tmp);
-      const len = Math.min(1.3, 0.25 + age * 6);
-      tmp.compose(new THREE.Vector3(x, y, z), qq.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), 0)), new THREE.Vector3(0.12, 1, -len));
+      const len = Math.min(1.8, 0.3 + age * 8);
+      tmp.compose(new THREE.Vector3(x, y, z), qq, new THREE.Vector3(0.2, 1, -len));
       this.needleTrails.setMatrixAt(np, tmp);
       np++;
     }

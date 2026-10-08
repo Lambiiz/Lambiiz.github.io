@@ -38,6 +38,8 @@ export class App {
   /** Developer capture mode: freezes presentation time and hides overlays for deterministic screenshots. */
   capture = false;
   frameTimes: number[] = [];
+  /** [update ms, render-submit ms] per frame, for profiling. */
+  cpuTimes: [number, number][] = [];
   loops = 0;
 
   private lastNow: number | null = null;
@@ -271,6 +273,7 @@ export class App {
   /** Fast-forward for developer fixtures only (not normal pacing). */
   advanceTicks(n: number): void {
     for (let i = 0; i < n && this.controller.isRunning(); i++) this.controller.handleOutcome(this.step());
+    this.clock.reset(); // display the authoritative state reached by the fixture
   }
 
   private onVisibility(): void {
@@ -341,6 +344,7 @@ export class App {
     this.fitPhase = key;
     this.rig.setFit(drafting ? this.draftFitPoints() : this.board.combatFitPoints(), this.hud.insets(phase), snap);
     this.rig.setDim(drafting ? 0.7 : 1);
+    this.cards.setTray(drafting);
   }
 
   // ------------------------------------------------------------------ frame
@@ -354,9 +358,14 @@ export class App {
       this.frameTimes.push(rawDt * 1000);
       if (this.frameTimes.length > 600) this.frameTimes.shift();
     }
+    const t0 = performance.now();
     this.update(this.capture ? 0 : dt, this.capture ? 0 : dt);
+    const t1 = performance.now();
     this.rig.renderer.info.reset();
     this.rig.render();
+    const t2 = performance.now();
+    this.cpuTimes.push([t1 - t0, t2 - t1]);
+    if (this.cpuTimes.length > 240) this.cpuTimes.shift();
   }
 
   /** One presentation update. `simDelta` feeds the fixed-step clock; `presentDt` drives UI/card motion. */
@@ -368,7 +377,7 @@ export class App {
     this.presentTime += presentDt;
 
     const sim = c.sim;
-    const alpha = c.isRunning() ? this.clock.alpha : 1;
+    const alpha = c.isRunning() && !this.capture ? this.clock.alpha : 1;
     const renderSimTime = Math.max(0, sim.simTime - (1 - alpha) * FIXED_DT);
     const simDt = Math.max(0, renderSimTime - this.lastRenderSimTime);
     this.lastRenderSimTime = renderSimTime;

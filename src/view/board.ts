@@ -2,6 +2,7 @@
 // seam and shared soul emitter) and the return aperture beyond the rim.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ARENA, BASE, SLOT_COUNT, TRIAL_COUNT } from '../game/content';
 import * as art from './art';
 import {
@@ -54,6 +55,18 @@ function roundedRectPath(w: number, h: number, r: number, cx: number, cy: number
   return p;
 }
 
+/** Bake a set of transformed copies of `geo` into one geometry (one draw call). */
+function bake(geo: THREE.BufferGeometry, transforms: THREE.Matrix4[]): THREE.BufferGeometry {
+  const parts = transforms.map((m) => geo.clone().applyMatrix4(m));
+  const merged = mergeGeometries(parts)!;
+  parts.forEach((p) => p.dispose());
+  return merged;
+}
+
+function trs(x: number, y: number, z: number, rx = 0, ry = 0, rz = 0): THREE.Matrix4 {
+  return new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(1, 1, 1));
+}
+
 export interface SocketView {
   slot: number;
   hit: THREE.Mesh; // explicit raycast target
@@ -76,7 +89,11 @@ export class BoardView {
   private warnLevel = 0;
   private baseShake = 0;
   private baseShakeAge = 1;
-  private apertureSegments: THREE.MeshStandardMaterial[] = [];
+  private apertureSegments: number[] = [];
+  private apertureLights!: THREE.InstancedMesh;
+  private segColor = new THREE.Color();
+  private static readonly SEG_OFF = new THREE.Color(0x10151f);
+  private static readonly SEG_ON = new THREE.Color(0x69dad0).multiplyScalar(2.2);
   private apertureIris: THREE.Mesh[] = [];
   private apertureCore: THREE.Mesh;
   private apertureCoreMat: THREE.MeshBasicMaterial;
@@ -172,14 +189,20 @@ export class BoardView {
     const backTex = tex(art.drawCardBack());
     const backMat = track(new THREE.MeshStandardMaterial({ map: backTex, roughness: 0.5, metalness: 0.1 }));
     const edgeMat = track(new THREE.MeshStandardMaterial({ color: 0xdfd3b2, roughness: 0.7 }));
-    const stackCard = track(new THREE.BoxGeometry(1.5, 0.035, 2.0));
-    for (let i = 0; i < 5; i++) {
-      const c = new THREE.Mesh(stackCard, [edgeMat, edgeMat, backMat, edgeMat, edgeMat, edgeMat]);
-      c.position.set(STACK_POS.x + (i % 2) * 0.02, 0.13 + i * 0.04, STACK_POS.z - i * 0.015);
-      c.rotation.y = ledge.rotation.y + (i - 2) * 0.03;
-      c.castShadow = true;
-      this.root.add(c);
-    }
+    // the stack body is one baked mesh; only the top card back carries the artwork
+    const stackCard = new THREE.BoxGeometry(1.5, 0.035, 2.0);
+    const stackXf: THREE.Matrix4[] = [];
+    for (let i = 0; i < 5; i++) stackXf.push(trs(STACK_POS.x + (i % 2) * 0.02, 0.13 + i * 0.04, STACK_POS.z - i * 0.015, 0, ledge.rotation.y + (i - 2) * 0.03, 0));
+    const stack = new THREE.Mesh(track(bake(stackCard, stackXf)), edgeMat);
+    stack.castShadow = true;
+    this.root.add(stack);
+    stackCard.dispose();
+    const topBack = new THREE.Mesh(track(new THREE.PlaneGeometry(1.46, 1.96)), backMat);
+    topBack.rotation.set(-Math.PI / 2, 0, ledge.rotation.y + 2 * 0.03, 'YXZ');
+    topBack.rotation.set(-Math.PI / 2, 0, 0);
+    topBack.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), ledge.rotation.y + 0.06);
+    topBack.position.set(STACK_POS.x, 0.13 + 4 * 0.04 + 0.019, STACK_POS.z - 4 * 0.015);
+    this.root.add(topBack);
 
     // --- Base: stepped pedestal
     const hx = BASE.halfX;
@@ -196,14 +219,30 @@ export class BoardView {
       this.baseGroup.add(m);
     }
     // ceramic body corner pilasters (brass)
-    const pil = track(new THREE.CylinderGeometry(0.11, 0.13, BODY_TOP - PLINTH_TOP, 12));
-    for (const sx of [-1, 1])
-      for (const sz of [-1, 1]) {
-        const p = new THREE.Mesh(pil, brass);
-        p.position.set(sx * (hx - 0.24), (BODY_TOP + PLINTH_TOP) / 2, sz * (hz - 0.24));
-        p.castShadow = true;
-        this.baseGroup.add(p);
-      }
+    const pil = new THREE.CylinderGeometry(0.11, 0.13, BODY_TOP - PLINTH_TOP, 12);
+    const pilXf: THREE.Matrix4[] = [];
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) pilXf.push(trs(sx * (hx - 0.24), (BODY_TOP + PLINTH_TOP) / 2, sz * (hz - 0.24)));
+    const pilasters = new THREE.Mesh(track(bake(pil, pilXf)), brass);
+    pil.dispose();
+    pilasters.castShadow = true;
+    this.baseGroup.add(pilasters);
+    // brass inlay frieze around the ceramic body and a glyph medallion on the viewer-facing side
+    const frieze = new THREE.Mesh(track(new RoundedBoxGeometry(hx * 2 - 0.36, 0.07, hz * 2 - 0.36, 2, 0.03)), brass);
+    frieze.position.y = PLINTH_TOP + (BODY_TOP - PLINTH_TOP) * 0.62;
+    frieze.castShadow = true;
+    this.baseGroup.add(frieze);
+    const medTex = tex(art.drawMedallion());
+    const medMat = track(new THREE.MeshStandardMaterial({ map: medTex, transparent: true, metalness: 0.7, roughness: 0.4 }));
+    const medGeo = track(new THREE.PlaneGeometry(1.5, 0.42));
+    for (const [x, z, ry] of [
+      [0, hz - 0.209, 0],
+      [hx - 0.209, 0, Math.PI / 2],
+    ] as const) {
+      const med = new THREE.Mesh(medGeo, medMat);
+      med.position.set(x, PLINTH_TOP + (BODY_TOP - PLINTH_TOP) * 0.3, z);
+      med.rotation.y = ry;
+      this.baseGroup.add(med);
+    }
     // warning rim (coral), pulses when the Base is hit
     this.warnMat = track(new THREE.MeshBasicMaterial({ color: 0xe28174, transparent: true, opacity: 0, depthWrite: false, toneMapped: true }));
     const warnShape = roundedRectShape(hx * 2 + 0.36, hz * 2 + 0.36, 0.3);
@@ -254,19 +293,21 @@ export class BoardView {
     const haloGeo = track(new THREE.ShapeGeometry(haloShape, 8));
     const hitGeo = track(new THREE.PlaneGeometry(HOLE_W + 0.2, HOLE_H + 0.2));
     const hitMat = track(new THREE.MeshBasicMaterial({ visible: false }));
+    const floorXf: THREE.Matrix4[] = [];
+    const lipXf: THREE.Matrix4[] = [];
     for (let s = 0; s < SLOT_COUNT; s++) {
       const c = socketCenter(s);
-      const floor = new THREE.Mesh(floorGeo, floorMat);
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.set(c.x, SOCKET_FLOOR, c.z);
-      floor.receiveShadow = true;
-      this.baseGroup.add(floor);
-      const lip = new THREE.Mesh(lipGeo, brass);
-      lip.rotation.x = -Math.PI / 2;
-      lip.position.set(c.x, LID_TOP - 0.005, c.z);
-      lip.castShadow = true;
-      lip.receiveShadow = true;
-      this.baseGroup.add(lip);
+      floorXf.push(trs(c.x, SOCKET_FLOOR, c.z, -Math.PI / 2));
+      lipXf.push(trs(c.x, LID_TOP - 0.005, c.z, -Math.PI / 2));
+    }
+    const floors = new THREE.Mesh(track(bake(floorGeo, floorXf)), floorMat);
+    floors.receiveShadow = true;
+    const lips = new THREE.Mesh(track(bake(lipGeo, lipXf)), brass);
+    lips.castShadow = true;
+    lips.receiveShadow = true;
+    this.baseGroup.add(floors, lips);
+    for (let s = 0; s < SLOT_COUNT; s++) {
+      const c = socketCenter(s);
       const haloMat = track(new THREE.MeshBasicMaterial({ color: 0x69dad0, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
       const halo = new THREE.Mesh(haloGeo, haloMat);
       halo.rotation.x = -Math.PI / 2;
@@ -301,14 +342,14 @@ export class BoardView {
     cradle.position.set(EMITTER_POS.x, LID_TOP + 0.08, EMITTER_POS.z);
     cradle.castShadow = true;
     this.baseGroup.add(cradle);
+    const prongGeo = new THREE.CylinderGeometry(0.018, 0.025, 0.36, 6);
+    const prongXf: THREE.Matrix4[] = [];
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * Math.PI * 2 + 0.5;
-      const prong = new THREE.Mesh(track(new THREE.CylinderGeometry(0.018, 0.025, 0.36, 6)), brass);
-      prong.position.set(Math.cos(a) * 0.17, LID_TOP + 0.22, Math.sin(a) * 0.17);
-      prong.rotation.z = Math.cos(a) * 0.35;
-      prong.rotation.x = -Math.sin(a) * 0.35;
-      this.baseGroup.add(prong);
+      prongXf.push(trs(Math.cos(a) * 0.17, LID_TOP + 0.22, Math.sin(a) * 0.17, -Math.sin(a) * 0.35, 0, Math.cos(a) * 0.35));
     }
+    this.baseGroup.add(new THREE.Mesh(track(bake(prongGeo, prongXf)), brass));
+    prongGeo.dispose();
     this.emitterMat = track(new THREE.MeshStandardMaterial({ color: 0x0b1a1c, emissive: 0x69dad0, emissiveIntensity: 2.2, roughness: 0.2 }));
     this.emitter = new THREE.Mesh(track(new THREE.SphereGeometry(0.15, 24, 16)), this.emitterMat);
     this.emitter.position.set(EMITTER_POS.x, EMITTER_POS.y, EMITTER_POS.z);
@@ -339,16 +380,16 @@ export class BoardView {
     const inner = new THREE.Mesh(track(new THREE.TorusGeometry(1.3, 0.04, 8, 96)), darkBrass);
     inner.position.y = 1.85;
     this.apertureGroup.add(inner);
+    // eight progress lights, one per trial, in a single instanced draw
     const segGeo = track(new THREE.BoxGeometry(0.34, 0.12, 0.16));
+    this.apertureLights = new THREE.InstancedMesh(segGeo, track(new THREE.MeshBasicMaterial({ color: 0xffffff })), TRIAL_COUNT);
     for (let i = 0; i < TRIAL_COUNT; i++) {
       const a = Math.PI / 2 + ((i + 0.5) / TRIAL_COUNT - 0.5) * Math.PI * 1.7;
-      const m = track(new THREE.MeshStandardMaterial({ color: 0x1a2030, emissive: 0x69dad0, emissiveIntensity: 0, roughness: 0.4, metalness: 0.3 }));
-      const seg = new THREE.Mesh(segGeo, m);
-      seg.position.set(Math.cos(a) * 1.78, 1.85 + Math.sin(a) * 1.78, 0.02);
-      seg.rotation.z = a + Math.PI / 2;
-      this.apertureGroup.add(seg);
-      this.apertureSegments.push(m);
+      this.apertureLights.setMatrixAt(i, trs(Math.cos(a) * 1.78, 1.85 + Math.sin(a) * 1.78, 0.02, 0, 0, a + Math.PI / 2));
+      this.apertureLights.setColorAt(i, new THREE.Color(0x10151f));
+      this.apertureSegments.push(0);
     }
+    this.apertureGroup.add(this.apertureLights);
     // iris leaves that slide open on victory
     const leafShape = new THREE.Shape();
     leafShape.moveTo(0, 0);
@@ -449,14 +490,18 @@ export class BoardView {
     for (const s of this.sockets) {
       s.haloLevel += (s.haloTarget - s.haloLevel) * (1 - Math.exp(-presentDt * 12));
       s.haloMat.opacity = s.haloLevel * (0.55 + 0.25 * Math.sin(time * 6));
+      s.halo.visible = s.haloLevel > 0.01;
       s.haloMat.color.copy(s.haloColor);
     }
 
-    this.apertureSegments.forEach((m, i) => {
+    for (let i = 0; i < this.apertureSegments.length; i++) {
       const lit = i < this.progress ? 1 : 0;
-      const target = lit * (1.4 + 0.3 * Math.sin(time * 2 + i)) + this.apertureOpen * 1.5;
-      m.emissiveIntensity += (target - m.emissiveIntensity) * (1 - Math.exp(-presentDt * 4));
-    });
+      const target = lit * (0.85 + 0.15 * Math.sin(time * 2 + i)) + this.apertureOpen * 0.6;
+      this.apertureSegments[i] += (target - this.apertureSegments[i]) * (1 - Math.exp(-presentDt * 4));
+      this.segColor.copy(BoardView.SEG_OFF).lerp(BoardView.SEG_ON, this.apertureSegments[i]);
+      this.apertureLights.setColorAt(i, this.segColor);
+    }
+    if (this.apertureLights.instanceColor) this.apertureLights.instanceColor.needsUpdate = true;
     this.apertureOpen += (this.apertureOpenTarget - this.apertureOpen) * (1 - Math.exp(-presentDt * 1.6));
     this.apertureIris.forEach((leaf, i) => {
       const a = (i / 6) * Math.PI * 2;
