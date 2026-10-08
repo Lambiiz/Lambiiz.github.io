@@ -106,16 +106,34 @@ async function toTurn(page) {
   s = await snap(page);
   check('Dragging the Needle into an open socket places it for 3 energy and removes it from the deck cycle', s.slots[open]?.defId === 'needle' && s.turn.energy === 3 && s.deckSize === 9);
 
-  // click-play an untargeted card (fixture: guarantee one in hand)
-  let spell = s.hand.find((c) => ['mend', 'polish', 'heavy', 'ash'].includes(c.defId));
-  if (!spell) spell = { uid: await api(page, () => __PALIMPSEST__.giveCard('polish')), defId: 'polish' };
+  // click-play a passive (fixture: guarantee a Sharpened Grief in hand)
+  const spell = { uid: await api(page, () => __PALIMPSEST__.giveCard('keen')), defId: 'keen' };
+  const deckBeforeSpell = s.deckSize + 1;
   await settle(page, 0.8);
   await raiseHand(page);
   const sp = await cardPos(page, spell.uid);
   await page.mouse.click(sp.x, sp.y);
   await settle(page, 0.8);
   s = await snap(page);
-  check('Clicking an active/passive card plays it for 1 energy and sends it to the discard pile', s.turn.energy === 2 && !s.hand.some((c) => c.uid === spell.uid) && s.discard >= 1, { card: spell.defId });
+  check('Clicking a passive plays it for 1 energy, applies +5% damage permanently and removes it from the deck', s.turn.energy === 2 && !s.hand.some((c) => c.uid === spell.uid) && Math.abs(s.mods.damage - 0.05) < 1e-9 && s.deckSize === deckBeforeSpell - 1, { card: spell.defId, mods: s.mods });
+
+  // the placed tower's tooltip shows modified stats (damage 6 -> 6.3) and no cost or charge
+  const cs0 = await api(page, (i) => __PALIMPSEST__.cardScreen(i), open);
+  await page.mouse.move(cs0.x, cs0.y);
+  await settle(page, 0.6);
+  const tip = await page.textContent('#tooltip');
+  check('Hovering a placed tower lists Damage, DPS, Attack speed, Range, Target and Projectiles with modifiers applied', /Damage\s*6\.3/.test(tip) && /DPS/.test(tip) && /Attack speed/.test(tip) && /Projectiles\s*1/.test(tip) && !/Cost|Charge|Socket/.test(tip), { tip });
+  await page.mouse.move(5, 300);
+
+  // an active card adds a cooldown icon at the top of the screen (fixture card)
+  const strayUid = await api(page, () => __PALIMPSEST__.giveCard('stray'));
+  await settle(page, 0.8);
+  await raiseHand(page);
+  const sp2 = await cardPos(page, strayUid);
+  await page.mouse.click(sp2.x, sp2.y);
+  await settle(page, 0.8);
+  check('Playing an active card installs it with a cooldown icon at the top of the screen', (await snap(page)).actives.some((a) => a.defId === 'stray') && (await page.isVisible('#actives .active-icon')));
+  check('During a turn the modifier panel lists the current modifiers', (await page.isVisible('#stats-panel')) && /Damage\s*\+5%/.test(await page.textContent('#stats-panel')));
 
   // sacrifice two cards via right-click marks (fixture: top up the hand)
   while ((await snap(page)).hand.length < 3) await api(page, () => __PALIMPSEST__.giveCard('mend'));
@@ -167,6 +185,11 @@ async function toTurn(page) {
   await waitPhase(page, ['COMBAT']);
   const frustum1 = await api(page, () => __PALIMPSEST__.frustum());
   check('End Turn discards the hand and starts wave 1', (await snap(page)).hand.length === 0 && (await snap(page)).trialIndex === 0);
+  check('During a wave the modifier panel is hidden until Tab', !(await page.isVisible('#stats-panel')));
+  await page.keyboard.press('Tab');
+  await settle(page, 0.3);
+  check('Tab shows the modifier panel during a wave', await page.isVisible('#stats-panel'));
+  await page.keyboard.press('Tab');
   await page.waitForFunction(() => __PALIMPSEST__.snapshot().simTime > 6, null, { timeout: 240000, polling: 250 });
   const st = await snap(page);
   check('Normal-time combat advances the simulation and foes walk in from the far ring', st.simTime > 6 && st.enemies.length > 0 && st.enemies.every((e) => Math.hypot(e.x, e.z) > 8), { simTime: +st.simTime.toFixed(1), foes: st.enemies.length });
@@ -179,6 +202,12 @@ async function toTurn(page) {
   check('Hovering a placed tower shows its attack range outline', (await api(page, () => window.__PALIMPSEST_APP__.board.rangeVisible.level)) > 0.5 && (await api(page, () => window.__PALIMPSEST_APP__.board.rangeVisible.radius)) === 14);
   await shot(page, '05-combat-range-hover');
   await page.mouse.move(5, 300);
+
+  // time speed: 3x runs three times as many steps per wall second
+  await page.click('#btn-speed-3');
+  check('The 3× speed button sets time speed 3', (await snap(page)).speed === 3);
+  await page.click('#btn-speed-1');
+  check('The 1× speed button restores normal speed', (await snap(page)).speed === 1);
 
   // pause dims effects; freeze holds
   await page.click('#btn-pause');

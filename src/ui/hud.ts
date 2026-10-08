@@ -1,9 +1,12 @@
 // Compact DOM HUD. Cards themselves are physical objects in the scene; the DOM only carries
-// Integrity, wave clock, settings, the turn controls (energy, piles, End Turn), a contextual
-// action bar (sacrifice/purge/replace/cancel), a 14px card tooltip and the overlays.
-import { BASE, cardDef, ENEMIES, STAKES_LINE, TRIAL_COUNT, TURN, WEAPONS } from '../game/content';
+// Integrity, wave clock, time speed, settings, active-card cooldown icons, the modifier panel,
+// the turn controls (energy, piles, End Turn), a contextual action bar (sacrifice/purge/replace/
+// cancel), a card tooltip and the overlays.
+import { activeCooldown, ACTIVE_IDS, BASE, cardDef, ENEMIES, SPELLS, STAKES_LINE, TRIAL_COUNT, TURN, WEAPONS } from '../game/content';
 import type { TurnStage } from '../game/phases';
-import type { CardId, Phase } from '../game/types';
+import { averageDps, fmt, towerStats } from '../game/stats';
+import type { ActiveDef, ActiveId, CardId, Phase, StatId, StatMods, WeaponId } from '../game/types';
+import { drawCardIcon } from '../view/art';
 
 export interface HudCallbacks {
   start(): void;
@@ -19,6 +22,13 @@ export interface HudCallbacks {
   clearMarks(): void;
   confirmReplace(): void;
   cancel(): void;
+  setSpeed(speed: number): void;
+}
+
+export interface ActiveView {
+  id: ActiveId;
+  count: number;
+  fraction: number;
 }
 
 export interface HudState {
@@ -26,6 +36,12 @@ export interface HudState {
   suspended: boolean;
   pauseReason: 'manual' | 'suspended' | null;
   hp: number;
+  maxHp: number;
+  speed: number;
+  mods: StatMods;
+  actives: ActiveView[];
+  towerIds: WeaponId[];
+  showStats: boolean;
   waveIndex: number;
   trialTime: number;
   trialDuration: number;
@@ -52,23 +68,57 @@ export interface HudState {
   piles: { draw: number; discard: number; drawPos: { x: number; y: number }; discardPos: { x: number; y: number }; cardH: number };
 }
 
-export function detailHtml(id: CardId, extra = ''): string {
+/** Card text markup → HTML: {+bonus} green, {-drawback} red. */
+export function richHtml(text: string): string {
+  return text.replace(/\{([+-])([^}]*)\}/g, (_, sign: string, body: string) => `<span class="${sign === '+' ? 'pos' : 'neg'}">${sign}${body}</span>`);
+}
+
+/** Wrap a number that a modifier changed: green when raised, red when lowered. */
+function tone(value: string, now: number, base: number): string {
+  if (Math.abs(now - base) < 1e-9) return value;
+  return `<span class="${now > base ? 'pos' : 'neg'}">${value}</span>`;
+}
+
+const STAT_LABEL: Record<StatId, string> = { attackSpeed: 'Attack speed', damage: 'Damage', range: 'Range', maxIntegrity: 'Max Integrity' };
+
+export interface DetailContext {
+  mods: StatMods;
+  towerIds: WeaponId[];
+  /** Copies of each active already in play. */
+  activeCounts: Partial<Record<ActiveId, number>>;
+}
+
+/**
+ * Tooltip body for a card. Costs are printed on the card itself, so they are not repeated here.
+ * Tower numbers include every modifier in play.
+ */
+export function detailHtml(id: CardId, ctx: DetailContext): string {
   const d = cardDef(id);
-  const typeName = { tower: 'Tower', active: 'Active', passive: 'Passive · lasts the next wave' }[d.type];
-  let rows: [string, string][] = [['Cost', `${d.cost} energy`]];
+  const typeName = { tower: 'Tower', active: 'Active · repeats during waves', passive: 'Passive · permanent' }[d.type];
+  let body = `<div class="tt-body">${richHtml(d.summary)}</div>`;
+  const rows: [string, string][] = [];
   if (d.type === 'tower') {
-    const w = WEAPONS[d.id];
-    rows = rows.concat([
-      ['Damage', w.pattern === 'chain' ? (w.chainDamage ?? []).join(' / ') : w.pattern === 'pulse' ? `${w.damage} to all in reach` : `${w.damage}`],
-      ['Interval', `${w.interval.toFixed(1)} s`],
-      ['Range', w.pattern === 'pulse' ? `${w.pulseRadius} around the vessel` : `${w.range}`],
-    ]);
-    if (w.pattern === 'chain') rows.push(['Chain', `3 foes, hop ${w.chainHopRange}`]);
+    const now = towerStats(d.id, ctx.mods);
+    const base = towerStats(d.id, { attackSpeed: 0, damage: 0, range: 0, maxIntegrity: 0 });
+    rows.push(['Damage', tone(now.damage.map((x) => fmt(x)).join(' → '), now.damage[0], base.damage[0])]);
+    rows.push(['DPS', tone(fmt(now.dps), now.dps, base.dps)]);
+    rows.push(['Attack speed', tone(`${fmt(now.attacksPerSecond, 2)} / s`, now.attacksPerSecond, base.attacksPerSecond)]);
+    rows.push(['Range', tone(fmt(now.range), now.range, base.range)]);
+    rows.push(['Target', now.target]);
+    if (now.projectiles !== null) rows.push(['Projectiles', String(now.projectiles)]);
+  } else if (d.type === 'passive') {
+    const total = ctx.mods[d.stat];
+    rows.push([`${STAT_LABEL[d.stat]} now`, total > 0 ? `<span class="pos">+${fmt(total * 100)}%</span>` : '+0%']);
+  } else {
+    const a = d as ActiveDef;
+    const have = ctx.activeCounts[a.id] ?? 0;
+    rows.push(['Cooldown', have > 0 ? `${fmt(activeCooldown(a.id, have))} s → <span class="pos">${fmt(activeCooldown(a.id, have + 1))} s</span>` : `${fmt(a.cooldown)} s`]);
+    if (a.effect.kind === 'strike') rows.push(['Strike now', `<span class="pos">${fmt(averageDps(ctx.towerIds, ctx.mods) * a.effect.dpsRatio)}</span> damage`]);
+    rows.push(['In play', have > 0 ? `${have} ${have === 1 ? 'copy' : 'copies'}` : 'none']);
+    body += `<div class="tt-note">Each extra copy shortens the shared cooldown.</div>`;
   }
   return `<div class="tt-head tt-${d.type}"><span class="tt-name">${d.name}</span><span class="tt-type">${typeName}</span></div>
-    <div class="tt-body">${d.summary}</div>
-    <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>${extra}
-    <div class="tt-flavor">“${d.flavor}”</div>`;
+    ${body}<dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
 }
 
 export class Hud {
@@ -79,6 +129,9 @@ export class Hud {
   private offListeners: (() => void)[] = [];
   private lastPhase: Phase | null = null;
   private turnKey = '';
+  private activesKey = '';
+  private statsKey = '';
+  private icons = new Map<ActiveId, string>();
 
   constructor(
     private root: HTMLElement,
@@ -97,6 +150,11 @@ export class Hud {
           <div class="bar"><div class="fill"></div></div>
           <span class="value">30s</span>
         </div>
+        <div class="speed" role="group" aria-label="Time speed">
+          <button id="btn-speed-1" title="Normal speed (1)">1×</button>
+          <button id="btn-speed-2" title="Double speed (2)">2×</button>
+          <button id="btn-speed-3" title="Triple speed (3)">3×</button>
+        </div>
         <div class="hud-spacer"></div>
         <div class="hud-buttons">
           <button id="btn-pause" title="Pause (P)">Pause</button>
@@ -106,6 +164,8 @@ export class Hud {
           <button id="btn-restart" class="danger" title="Restart">Restart</button>
         </div>
       </div>
+      <div id="actives" class="hidden" aria-label="Active cards"></div>
+      <div id="stats-panel" class="hidden" aria-label="Modifiers"></div>
       <div id="forecast" class="hidden"></div>
       <div id="energy" class="hidden" aria-live="polite"><span class="label">Energy</span><span class="pips"></span><span class="value"></span></div>
       <div id="draw-count" class="pile-count hidden" title="Draw pile"></div>
@@ -126,9 +186,9 @@ export class Hud {
           <div class="stakes">${STAKES_LINE}</div>
           <div class="divider"></div>
           <p>Seat tower cards in the vessel; each fills with light and fires on its own. Between waves, play your hand with ${TURN.energyPerTurn} energy.</p>
-          <p>Drag or click cards to play them. Right-click cards to mark them: sacrifice two for something new, or purge one.</p>
+          <p>Passive cards are permanent bonuses; active cards repeat on their own during waves. Drag or click cards to play them. Right-click cards to mark them: sacrifice two for something new, or purge one.</p>
           <div class="actions"><button id="btn-start" class="primary">Begin</button></div>
-          <p class="small">E end turn · Esc cancel · P pause · M mute · Q quality · wheel zoom · Z reset zoom</p>
+          <p class="small">E end turn · Esc cancel · Tab modifiers · 1/2/3 speed · P pause · M mute · Q quality · wheel zoom · Z reset zoom</p>
         </div>
       </div>
       <div id="pause-overlay" class="overlay soft hidden">
@@ -176,6 +236,7 @@ export class Hud {
     on('btn-clear', () => cb.clearMarks());
     on('btn-replace', () => cb.confirmReplace());
     on('btn-cancel', () => cb.cancel());
+    for (const n of [1, 2, 3]) on(`btn-speed-${n}`, () => cb.setSpeed(n));
     const vol = this.el.volume as HTMLInputElement;
     const onVol = () => cb.setVolume(Number(vol.value) / 100);
     vol.addEventListener('input', onVol);
@@ -226,7 +287,7 @@ export class Hud {
     this.el.hud.classList.toggle('hidden', !inRun);
     this.el['title-overlay'].classList.toggle('hidden', s.phase !== 'TITLE');
 
-    const hpFrac = Math.max(0, s.hp / BASE.maxHealth);
+    const hpFrac = Math.max(0, s.hp / s.maxHp);
     (this.el.integrity.querySelector('.fill') as HTMLElement).style.transform = `scaleX(${hpFrac})`;
     (this.el.integrity.querySelector('.value') as HTMLElement).textContent = `${Math.ceil(s.hp)}`;
     this.el.integrity.classList.toggle('low', hpFrac <= 0.35);
@@ -240,6 +301,10 @@ export class Hud {
     const remaining = Math.max(0, s.trialDuration - s.trialTime);
     (this.el.trial.querySelector('.fill') as HTMLElement).style.transform = `scaleX(${turn ? 1 : s.clearing ? 0 : remaining / s.trialDuration})`;
     (this.el.trial.querySelector('.value') as HTMLElement).textContent = turn ? 'next' : s.clearing ? `${s.enemiesLeft} left` : `${Math.ceil(remaining)}s`;
+
+    for (const n of [1, 2, 3]) this.el[`btn-speed-${n}`].classList.toggle('on', s.speed === n);
+    this.updateActives(s);
+    this.updateStats(s);
 
     this.el['btn-pause'].textContent = s.phase === 'PAUSED' ? 'Resume' : 'Pause';
     (this.el['btn-pause'] as HTMLButtonElement).disabled = !(s.phase === 'COMBAT' || s.phase === 'CLEARING' || s.phase === 'PAUSED');
@@ -263,7 +328,7 @@ export class Hud {
       const win = s.phase === 'VICTORY';
       this.el['end-overlay'].className = `overlay ${win ? 'victory' : 'defeat'}`;
       this.el['end-title'].textContent = win ? 'Returned to Life' : 'The Vessel Breaks';
-      this.el['end-text'].textContent = win ? 'Eight waves endured. The aperture opens and the soul rises toward a new life.' : 'Your memories scatter across the table. The instrument can be wound again.';
+      this.el['end-text'].textContent = win ? 'Eight waves endured. The candle burns down and the soul rises toward a new life.' : 'Your memories scatter across the table. The instrument can be wound again.';
       this.el['end-stats'].innerHTML = `<div><b>${s.waveIndex + 1}/${TRIAL_COUNT}</b>wave</div><div><b>${s.kills}</b>echoes laid to rest</div><div><b>${s.towers}</b>towers held</div><div><b>${Math.ceil(s.hp)}</b>integrity</div>`;
       this.el['end-seed'].textContent = `Seed ${s.seed}`;
       setTimeout(() => this.el['btn-end-restart'].focus({ preventScroll: true }), 0);
@@ -330,6 +395,63 @@ export class Hud {
     this.el['action-bar'].classList.toggle('hidden', !text || s.suspended);
     const bottom = p.cardH * 1.25 + 18;
     this.el['action-bar'].style.bottom = `${bottom}px`;
+  }
+
+  /** Cooldown icons for played active cards; each fills bottom-up like a tower card. */
+  private updateActives(s: HudState): void {
+    const box = this.el.actives;
+    const show = s.phase !== 'TITLE' && s.actives.length > 0;
+    box.classList.toggle('hidden', !show);
+    if (!show) return;
+    const key = s.actives.map((a) => `${a.id}:${a.count}`).join(',');
+    if (key !== this.activesKey) {
+      this.activesKey = key;
+      box.innerHTML = s.actives
+        .map((a) => {
+          const def = SPELLS[a.id] as ActiveDef;
+          return `<div class="active-icon" data-id="${a.id}" title="${def.name}: every ${fmt(activeCooldown(a.id, a.count))} s">
+            <img alt="" src="${this.iconUrl(a.id)}" /><div class="cd"></div>
+            ${a.count > 1 ? `<span class="count">×${a.count}</span>` : ''}<span class="cd-label">${fmt(activeCooldown(a.id, a.count))}s</span></div>`;
+        })
+        .join('');
+    }
+    for (const a of s.actives) {
+      const el = box.querySelector<HTMLElement>(`.active-icon[data-id="${a.id}"]`);
+      if (!el) continue;
+      (el.querySelector('.cd') as HTMLElement).style.transform = `scaleY(${1 - a.fraction})`;
+      el.classList.toggle('ready', a.fraction >= 1);
+    }
+  }
+
+  private iconUrl(id: ActiveId): string {
+    let url = this.icons.get(id);
+    if (!url) {
+      url = drawCardIcon(id, 96).toDataURL();
+      this.icons.set(id, url);
+    }
+    return url;
+  }
+
+  /** Run-wide modifiers: always shown during a turn, toggled with Tab during a wave. */
+  private updateStats(s: HudState): void {
+    const panel = this.el['stats-panel'];
+    const show = s.phase !== 'TITLE' && s.phase !== 'DEFEAT' && s.phase !== 'VICTORY' && (s.phase === 'TURN' || s.showStats);
+    panel.classList.toggle('hidden', !show);
+    if (!show) return;
+    const key = JSON.stringify([s.mods, s.actives.map((a) => [a.id, a.count]), s.towerIds, s.maxHp]);
+    if (key === this.statsKey) return;
+    this.statsKey = key;
+    const pct = (v: number) => (v > 0 ? `<span class="pos">+${fmt(v * 100)}%</span>` : `<span class="zero">+0%</span>`);
+    const rows = (Object.keys(STAT_LABEL) as StatId[]).map((k) => `<dt>${STAT_LABEL[k]}</dt><dd>${pct(s.mods[k])}</dd>`).join('');
+    const towers = s.towerIds.map((id) => `<dt>${WEAPONS[id].name}</dt><dd>${fmt(towerStats(id, s.mods).dps)} DPS</dd>`).join('');
+    const actives = ACTIVE_IDS.map((id) => s.actives.find((a) => a.id === id))
+      .filter((a): a is ActiveView => !!a)
+      .map((a) => `<dt>${SPELLS[a.id].name}${a.count > 1 ? ` ×${a.count}` : ''}</dt><dd>every ${fmt(activeCooldown(a.id, a.count))} s</dd>`)
+      .join('');
+    panel.innerHTML = `<h3>Modifiers</h3><dl>${rows}<dt>Integrity</dt><dd>${fmt(s.maxHp)} max</dd></dl>
+      ${towers ? `<h4>Towers</h4><dl>${towers}</dl>` : ''}
+      ${actives ? `<h4>Actives</h4><dl>${actives}</dl>` : ''}
+      <p class="hint">${s.phase === 'TURN' ? 'Tab shows this during waves' : 'Tab to hide'}</p>`;
   }
 
   /** Position an element centred on x (clamped to the viewport) with its bottom at y. */

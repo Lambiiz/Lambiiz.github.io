@@ -586,44 +586,6 @@ function illusMend(ctx: Ctx): void {
   ctx.restore();
 }
 
-function illusAsh(ctx: Ctx): void {
-  // a tipped funerary urn pouring a fan of ash and embers
-  ctx.save();
-  ctx.translate(-70, -60);
-  ctx.rotate(-0.7);
-  ctx.beginPath();
-  ctx.moveTo(-50, -80);
-  ctx.bezierCurveTo(-90, -40, -95, 40, -45, 80);
-  ctx.lineTo(45, 80);
-  ctx.bezierCurveTo(95, 40, 90, -40, 50, -80);
-  ctx.closePath();
-  ctx.fillStyle = ENAMEL;
-  ctx.fill();
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = INK;
-  ctx.stroke();
-  ctx.fillStyle = BRASS;
-  ctx.fillRect(-70, -20, 140, 14);
-  ctx.fillRect(-60, 30, 120, 10);
-  ctx.beginPath();
-  ctx.ellipse(0, -84, 54, 14, 0, 0, Math.PI * 2);
-  ctx.fillStyle = '#2a2014';
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-  const rnd = grainRng(77);
-  for (let i = 0; i < 120; i++) {
-    const a = -0.2 + rnd() * 1.4;
-    const r = 40 + rnd() * 190;
-    const x = -10 + Math.cos(a) * r;
-    const y = -40 + Math.sin(a) * r * 0.9 + r * 0.25;
-    ctx.beginPath();
-    ctx.arc(x, y, 2 + rnd() * 6, 0, Math.PI * 2);
-    ctx.fillStyle = rnd() < 0.18 ? CORAL : rnd() < 0.5 ? '#4a4038' : '#8a7c6a';
-    ctx.fill();
-  }
-}
-
 function illusQuicken(ctx: Ctx): void {
   // an hourglass whose sand hangs in the air
   ctx.lineWidth = 7;
@@ -669,60 +631,151 @@ function illusQuicken(ctx: Ctx): void {
   }
 }
 
-function illusHeavy(ctx: Ctx): void {
-  // an iron weight pressing a feather flat
+function illusKeen(ctx: Ctx): void {
+  // a long blade drawn across a whetstone, sparks flying
+  ctx.save();
+  ctx.rotate(-0.55);
   ctx.beginPath();
-  ctx.moveTo(-120, 60);
-  ctx.lineTo(-80, -90);
-  ctx.lineTo(80, -90);
-  ctx.lineTo(120, 60);
+  ctx.moveTo(-190, -10);
+  ctx.lineTo(120, -18);
+  ctx.lineTo(175, 0);
+  ctx.lineTo(120, 18);
+  ctx.lineTo(-190, 10);
   ctx.closePath();
-  ctx.fillStyle = '#2b2b30';
+  const g = ctx.createLinearGradient(0, -18, 0, 18);
+  g.addColorStop(0, '#e9e4d6');
+  g.addColorStop(0.5, '#8d96a6');
+  g.addColorStop(1, '#3b4352');
+  ctx.fillStyle = g;
   ctx.fill();
-  ctx.lineWidth = 7;
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.fillStyle = BRASS;
+  ctx.fillRect(-206, -30, 18, 60);
+  ctx.strokeRect(-206, -30, 18, 60);
+  ctx.fillStyle = '#3a2418';
+  ctx.fillRect(-262, -12, 58, 24);
+  ctx.strokeRect(-262, -12, 58, 24);
+  ctx.restore();
+  // whetstone
+  ctx.beginPath();
+  ctx.roundRect(-150, 70, 300, 70, 12);
+  ctx.fillStyle = '#5a5249';
+  ctx.fill();
+  ctx.lineWidth = 6;
   ctx.strokeStyle = INK;
   ctx.stroke();
   ctx.save();
   ctx.clip();
-  hatch(ctx, 0.8, 9, 1.4, 'rgba(230,222,199,0.18)', [-130, -100, 260, 170]);
+  hatch(ctx, 0.3, 8, 1.2, 'rgba(230,222,199,0.18)', [-150, 70, 300, 70]);
   ctx.restore();
-  ctx.beginPath();
-  ctx.arc(0, -120, 34, Math.PI, 0);
-  ctx.lineWidth = 14;
-  ctx.strokeStyle = INK;
-  ctx.stroke();
-  ctx.fillStyle = IVORY;
-  ctx.font = `700 46px ${SERIF}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('XX', 0, -10);
-  // flattened feather
-  ctx.beginPath();
-  ctx.moveTo(-160, 90);
-  ctx.quadraticCurveTo(0, 60, 170, 92);
-  ctx.quadraticCurveTo(0, 112, -160, 90);
-  ctx.fillStyle = IVORY_DEEP;
-  ctx.fill();
+  const rnd = grainRng(19);
+  ctx.strokeStyle = '#e8a050';
   ctx.lineWidth = 3;
-  ctx.strokeStyle = INK;
-  ctx.stroke();
-  for (let x = -140; x < 160; x += 14) {
+  for (let i = 0; i < 14; i++) {
+    const a = -Math.PI / 2 + (rnd() - 0.5) * 1.6;
+    const r0 = 20 + rnd() * 20;
+    const r1 = r0 + 30 + rnd() * 50;
     ctx.beginPath();
-    ctx.moveTo(x, 92);
-    ctx.lineTo(x + 10, 80 + ((x / 14) % 2) * 6);
+    ctx.moveTo(30 + Math.cos(a) * r0, 60 + Math.sin(a) * r0);
+    ctx.lineTo(30 + Math.cos(a) * r1, 60 + Math.sin(a) * r1);
     ctx.stroke();
   }
-  // downward pressure marks
-  ctx.strokeStyle = CORAL;
-  ctx.lineWidth = 5;
-  for (const x of [-150, 150]) {
+}
+
+function illusSturdy(ctx: Ctx): void {
+  // a squat reliquary chest bound with iron straps
+  ctx.beginPath();
+  ctx.roundRect(-150, -40, 300, 170, 14);
+  ctx.fillStyle = '#5a3a24';
+  ctx.fill();
+  ctx.lineWidth = 7;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-150, -40);
+  ctx.quadraticCurveTo(0, -170, 150, -40);
+  ctx.closePath();
+  ctx.fillStyle = '#6b4730';
+  ctx.fill();
+  ctx.stroke();
+  ctx.save();
+  ctx.clip();
+  hatch(ctx, 0.15, 10, 1.3, 'rgba(230,222,199,0.14)', [-150, -170, 300, 140]);
+  ctx.restore();
+  ctx.fillStyle = '#2b2b30';
+  for (const x of [-100, 80]) {
+    ctx.fillRect(x, -120, 22, 250);
+    ctx.strokeRect(x, -120, 22, 250);
+  }
+  ctx.fillRect(-150, 40, 300, 20);
+  ctx.strokeRect(-150, 40, 300, 20);
+  // clasp
+  ctx.beginPath();
+  ctx.arc(0, 50, 26, 0, Math.PI * 2);
+  ctx.fillStyle = BRASS;
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = INK;
+  ctx.fillRect(-5, 44, 10, 22);
+  // rivets
+  ctx.fillStyle = BRASS_LIGHT;
+  for (const [x, y] of [[-89, -70], [-89, 0], [-89, 100], [91, -70], [91, 0], [91, 100]]) {
     ctx.beginPath();
-    ctx.moveTo(x, -80);
-    ctx.lineTo(x, 20);
-    ctx.lineTo(x - 12, 6);
-    ctx.moveTo(x, 20);
-    ctx.lineTo(x + 12, 6);
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function illusStray(ctx: Ctx): void {
+  // a single memory falling like a comet onto a small piece below
+  const g = ctx.createLinearGradient(140, -170, -10, 60);
+  g.addColorStop(0, 'rgba(105,218,208,0)');
+  g.addColorStop(1, 'rgba(105,218,208,0.9)');
+  ctx.beginPath();
+  ctx.moveTo(170, -190);
+  ctx.lineTo(-2, 52);
+  ctx.lineTo(18, 64);
+  ctx.closePath();
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(4, 58, 18, 0, Math.PI * 2);
+  ctx.fillStyle = '#e8fffb';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  // the struck piece: a little hooded pawn
+  ctx.beginPath();
+  ctx.moveTo(-40, 170);
+  ctx.lineTo(40, 170);
+  ctx.lineTo(28, 140);
+  ctx.quadraticCurveTo(30, 90, 4, 82);
+  ctx.quadraticCurveTo(-22, 90, -20, 140);
+  ctx.closePath();
+  ctx.fillStyle = IVORY_DEEP;
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  // impact rays
+  ctx.strokeStyle = CORAL;
+  ctx.lineWidth = 4;
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(4 + Math.cos(a) * 30, 58 + Math.sin(a) * 30);
+    ctx.lineTo(4 + Math.cos(a) * 56, 58 + Math.sin(a) * 56);
     ctx.stroke();
+  }
+  // a few stars
+  const rnd = grainRng(41);
+  ctx.fillStyle = INK_SOFT;
+  for (let i = 0; i < 16; i++) {
+    ctx.beginPath();
+    ctx.arc(-200 + rnd() * 400, -170 + rnd() * 150, 2 + rnd() * 3, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -731,11 +784,12 @@ const ILLUSTRATIONS: Record<CardId, (ctx: Ctx) => void> = {
   light: illusLight,
   thread: illusThread,
   bell: illusBell,
-  polish: illusPolish,
+  swift: illusQuicken,
+  keen: illusKeen,
+  farsight: illusPolish,
+  sturdy: illusSturdy,
+  stray: illusStray,
   mend: illusMend,
-  ash: illusAsh,
-  quicken: illusQuicken,
-  heavy: illusHeavy,
 };
 
 /** Muted type colours: towers dark blue, actives dark red, passives dark brown. */
@@ -745,19 +799,57 @@ export const TYPE_COLORS: Record<CardType, { frame: string; band: string; text: 
   passive: { frame: '#54402a', band: '#33261a', text: '#e0d3bb', label: 'PASSIVE' },
 };
 
-function wrapText(ctx: Ctx, text: string, maxW: number): string[] {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let line = '';
-  for (const w of words) {
-    const t = line ? `${line} ${w}` : w;
-    if (ctx.measureText(t).width > maxW && line) {
-      lines.push(line);
-      line = w;
-    } else line = t;
+export interface RichWord {
+  text: string;
+  tone: 0 | 1 | -1; // 1 bonus (green), -1 drawback (red)
+  glue: boolean; // no space before (punctuation right after a highlighted phrase)
+}
+
+/** Split card text with {+bonus} / {-drawback} markup into styled words. */
+export function richWords(text: string): RichWord[] {
+  const out: RichWord[] = [];
+  const re = /\{([+-])([^}]*)\}|([^{]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const tone: RichWord['tone'] = m[1] === '+' ? 1 : m[1] === '-' ? -1 : 0;
+    const body = m[1] ? m[1] + m[2] : m[3];
+    body.split(' ').forEach((w, i) => {
+      if (w) out.push({ text: w, tone, glue: i === 0 && out.length > 0 && !/^\s/.test(body) });
+    });
   }
-  if (line) lines.push(line);
+  return out;
+}
+
+function joinWords(ws: RichWord[]): string {
+  return ws.map((w, i) => (i > 0 && !w.glue ? ' ' : '') + w.text).join('');
+}
+
+function wrapRich(ctx: Ctx, words: RichWord[], maxW: number): RichWord[][] {
+  const lines: RichWord[][] = [];
+  let line: RichWord[] = [];
+  const width = (ws: RichWord[]) => ctx.measureText(joinWords(ws)).width;
+  for (const w of words) {
+    if (line.length && width([...line, w]) > maxW) {
+      lines.push(line);
+      line = [w];
+    } else line.push(w);
+  }
+  if (line.length) lines.push(line);
   return lines;
+}
+
+function drawRichLine(ctx: Ctx, line: RichWord[], cx: number, y: number, colors: Record<-1 | 0 | 1, string>): void {
+  const space = ctx.measureText(' ').width;
+  const total = ctx.measureText(joinWords(line)).width;
+  let x = cx - total / 2;
+  ctx.textAlign = 'left';
+  line.forEach((w, i) => {
+    if (i > 0 && !w.glue) x += space;
+    ctx.fillStyle = colors[w.tone];
+    ctx.fillText(w.text, x, y);
+    x += ctx.measureText(w.text).width;
+  });
+  ctx.textAlign = 'center';
 }
 
 /** Worn edge: random nicks along a rectangle's border, drawn in the background colour. */
@@ -777,28 +869,36 @@ function wornEdges(ctx: Ctx, w: number, h: number, seed: number, color: string):
 }
 
 /**
- * Printed-card finish: ordered-dither posterisation plus grain. Gives the cards a stamped,
- * hand-printed texture instead of smooth digital gradients.
+ * Printed-card finish: soft posterisation plus a little grain, so the cards look stamped rather
+ * than smoothly digital. (No ordered dither: its regular pattern shimmers when the card is scaled.)
  */
-function printFinish(c: HTMLCanvasElement, seed: number, levels = 9): void {
+function printFinish(c: HTMLCanvasElement, seed: number, levels = 14): void {
   const ctx = c.getContext('2d')!;
   const img = ctx.getImageData(0, 0, c.width, c.height);
   const d = img.data;
-  const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
   const rnd = grainRng(seed);
   const step = 255 / (levels - 1);
   for (let y = 0; y < c.height; y++)
     for (let x = 0; x < c.width; x++) {
       const i = (y * c.width + x) * 4;
       if (d[i + 3] === 0) continue;
-      const th = (bayer[(y & 3) * 4 + (x & 3)] / 16 - 0.5) * step;
-      const g = (rnd() - 0.5) * 14;
+      const g = (rnd() - 0.5) * 10;
       for (let k = 0; k < 3; k++) {
-        const v = d[i + k] + th + g;
+        const v = d[i + k] + g;
         d[i + k] = Math.max(0, Math.min(255, Math.round(v / step) * step));
       }
     }
   ctx.putImageData(img, 0, 0);
+}
+
+/** A square icon of a card's illustration (used for the active-card cooldown icons). */
+export function drawCardIcon(id: CardId, size = 96): HTMLCanvasElement {
+  const [c, ctx] = makeCanvas(size, size);
+  paperGround(ctx, size, size, id.length * 13, '#cfc3a2');
+  ctx.translate(size / 2, size / 2);
+  ctx.scale(size / 440, size / 440);
+  ILLUSTRATIONS[id](ctx);
+  return c;
 }
 
 /** Draws one card face. Printed bottom is canvas bottom (UV y=0). */
@@ -883,9 +983,10 @@ export function drawCardFace(id: CardId): HTMLCanvasElement {
     ctx.font = `600 30px ${SANS}`;
     ctx.fillText(`RANGE ${w.range} · ${kind}`, W / 2, ty + 108);
   } else {
-    ctx.font = `600 28px ${SANS}`;
-    const lines = wrapText(ctx, def.summary, W - 120).slice(0, 4);
-    lines.forEach((ln, i) => ctx.fillText(ln, W / 2, ty + 48 + i * 36));
+    ctx.font = `600 29px ${SANS}`;
+    const lines = wrapRich(ctx, richWords(def.summary), W - 116).slice(0, 4);
+    const colors = { 0: tc.text, 1: '#9ad78c', [-1]: '#ec8a78' } as Record<-1 | 0 | 1, string>;
+    lines.forEach((ln, i) => drawRichLine(ctx, ln, W / 2, ty + 50 + i * 38, colors));
   }
   ctx.font = `800 22px ${SANS}`;
   ctx.globalAlpha = 0.75;
@@ -1047,6 +1148,42 @@ export function drawMothWing(): HTMLCanvasElement {
   ctx.beginPath();
   ctx.arc(0, 256, 245, -Math.PI / 2, 0);
   ctx.stroke();
+  return c;
+}
+
+/**
+ * Fog veil for a horizontal plane of `world` units at height `fogY`. Transparent around the Base,
+ * thickening to near-black toward the table edges, with a pool of light around the candle. Hole
+ * centres are shifted toward the viewer so they line up with the ground seen through the veil.
+ */
+export function drawFogVeil(world: number, fogY: number, candle: { x: number; z: number }, book: { x: number; z: number }, size = 1024): HTMLCanvasElement {
+  const [c, ctx] = makeCanvas(size, size);
+  const img = ctx.createImageData(size, size);
+  const d = img.data;
+  const shift = fogY / Math.tan((58 * Math.PI) / 180); // view elevation (SceneRig)
+  const ss = (a: number, b: number, x: number) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  for (let py = 0; py < size; py++)
+    for (let px = 0; px < size; px++) {
+      const wx = (px / size - 0.5) * world;
+      const wz = (py / size - 0.5) * world;
+      const r = Math.hypot(wx, wz - shift);
+      let a = ss(11, 27, r) * 0.86 + ss(27, 42, r) * 0.12;
+      // slow drifting wisps so the veil reads as fog, not a flat gradient
+      a += (Math.sin(wx * 0.21 + wz * 0.07) + Math.sin(wz * 0.17 - wx * 0.11 + 1.7)) * 0.03 * ss(14, 24, r);
+      const dc = Math.hypot(wx - candle.x, wz - candle.z - shift);
+      a *= 1 - 0.8 * (1 - ss(3, 12, dc));
+      const db = Math.hypot(wx - book.x, wz - book.z - shift);
+      a *= 1 - 0.4 * (1 - ss(5, 11, db));
+      const i = (py * size + px) * 4;
+      d[i] = 7;
+      d[i + 1] = 4;
+      d[i + 2] = 3;
+      d[i + 3] = Math.round(Math.min(0.98, Math.max(0, a)) * 255);
+    }
+  ctx.putImageData(img, 0, 0);
   return c;
 }
 

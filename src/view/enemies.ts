@@ -88,14 +88,13 @@ export class EnemiesView {
     const wingTex = track(art.colorTexture(art.drawMothWing(), renderer));
     const wing = track(new THREE.MeshStandardMaterial({ map: wingTex, color: 0xfff4dc, emissive: 0x2a2418, roughness: 0.7, side: THREE.DoubleSide }));
 
-    const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, _shadow = false) => {
+    const mk = (geo: THREE.BufferGeometry, mat: THREE.Material) => {
       track(geo);
       const m = new THREE.InstancedMesh(geo, mat, CAPACITY);
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       m.setColorAt(0, white);
       m.count = 0;
-      m.castShadow = false; // crowds use pooled blob shadows, never the realtime shadow map
-      void _shadow;
+      m.castShadow = true; // pieces throw real shadows away from the candle
       // conservative bounds covering the whole arena; instances move every frame
       m.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, 0), 40);
       m.frustumCulled = false;
@@ -132,7 +131,7 @@ export class EnemiesView {
     const eF = 5;
     this.addArch('echo', [
       { mesh: mk(disc(0.32), baseWood), local: (o, t, ph) => compose(o, 0, hop(t, ph, eF, 0.07), 0, tip(t, ph, eF * 2, 0.06), 0, 0) },
-      { mesh: mk(echoBody, bone, true), local: (o, t, ph, hit) => compose(o, 0, hop(t, ph, eF, 0.07), 0, tip(t, ph, eF * 2, 0.06) - hit * 0.25, 0, 0, 1, 1 - hit * 0.08, 1) },
+      { mesh: mk(echoBody, bone), local: (o, t, ph, hit) => compose(o, 0, hop(t, ph, eF, 0.07), 0, tip(t, ph, eF * 2, 0.06) - hit * 0.25, 0, 0, 1, 1 - hit * 0.08, 1) },
       { mesh: mk(echoFace, ink), local: (o, t, ph, hit) => compose(o, 0, hop(t, ph, eF, 0.07), 0, tip(t, ph, eF * 2, 0.06) - hit * 0.25, 0, 0, 1, 1 - hit * 0.08, 1) },
     ]);
 
@@ -159,7 +158,7 @@ export class EnemiesView {
     this.addArch('moth', [
       { mesh: mk(disc(0.26), baseWood), local: (o, t, ph) => mothRoot(o, t, ph) },
       { mesh: mk(peg, darkBrass), local: (o, t, ph) => mothRoot(o, t, ph) },
-      { mesh: mk(pearlGeo, pearl, true), local: (o, t, ph, hit) => mothRoot(o, t, ph).multiply(compose(tmpM, 0, 0, 0, 0, 0, 0, 1 - hit * 0.12)) },
+      { mesh: mk(pearlGeo, pearl), local: (o, t, ph, hit) => mothRoot(o, t, ph).multiply(compose(tmpM, 0, 0, 0, 0, 0, 0, 1 - hit * 0.12)) },
       {
         mesh: mk(wingGeo, wing),
         local: (o, t, ph) => mothRoot(o, t, ph).multiply(compose(tmpM, 0.02, 0.6, 0, 0, -0.3, flap(t, ph))),
@@ -202,12 +201,12 @@ export class EnemiesView {
       compose(o, 0, hop(t, ph, uF, 0.05), 0, tip(t, ph, uF * 2, 0.05) - hit * 0.12, 0, Math.sin(t * uF + ph) * 0.05, 1, 1 - hit * 0.06, 1);
     this.addArch('urn', [
       { mesh: mk(disc(0.44), baseWood), local: (o, t, ph, hit) => urnRoot(o, t, ph, hit) },
-      { mesh: mk(urnBody, bone, true), local: (o, t, ph, hit) => urnRoot(o, t, ph, hit) },
+      { mesh: mk(urnBody, bone), local: (o, t, ph, hit) => urnRoot(o, t, ph, hit) },
       { mesh: mk(bandsGeo, darkBrass), local: (o, t, ph, hit) => urnRoot(o, t, ph, hit) },
     ]);
 
     // blob shadows (pooled)
-    const blobTex = track(art.colorTexture(art.drawRadial('rgba(0,0,0,0.6)', 'rgba(0,0,0,0)', 64), renderer));
+    const blobTex = track(art.colorTexture(art.drawRadial('rgba(0,0,0,0.5)', 'rgba(0,0,0,0)', 64), renderer));
     const blobGeo = track(new THREE.PlaneGeometry(1, 1));
     blobGeo.rotateX(-Math.PI / 2);
     this.blob = new THREE.InstancedMesh(blobGeo, track(new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false })), CAPACITY * 3);
@@ -360,9 +359,9 @@ export class EnemiesView {
         if (vis.arrived) tmpColor.lerp(new THREE.Color(2.2, 0.9, 0.8), Math.min(1, dissolve * 1.5));
         p.mesh.setColorAt(idx, tmpColor);
       }
-      // blob shadow
+      // small contact shadow under the base (the candle casts the long one)
       if (blobN < CAPACITY * 3) {
-        const r = vis.radius * 2.4 * (1 - dissolve);
+        const r = vis.radius * 1.7 * (1 - dissolve);
         this.blob.setMatrixAt(blobN++, compose(tmpM, vis.x, 0.012, vis.z, 0, 0, 0, r, 1, r));
       }
       // damaged-only health indicator

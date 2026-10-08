@@ -30,3 +30,18 @@ export function socketCenter(slot: number): { x: number; z: number } {
 }
 
 export const EMITTER_POS = { x: 0, y: LID_TOP + 0.36, z: 0 };
+
+/** The single candle that lights the table (left of the arena, slightly toward the far side). */
+export const CANDLE_POS = { x: -34, z: -9 };
+export const CANDLE_HEIGHT = 6.5;
+/** The shadow-casting key light sits a little above the flame so shadows stay readable. */
+export const CANDLE_LIGHT_POS = { x: -32, y: 12, z: -8 };
+export const BOOK_POS = { x: 35, z: -10 };
+/** Fog veil: a world-space plane just above the pieces. */
+export const FOG_Y = 3.2;
+export const FOG_WORLD = 320;
+
+/** Shared flicker so the flame mesh, its glow and the key light move together. */
+export function candleFlicker(time: number): number {
+  return 1 + Math.sin(time * 11) * 0.06 + Math.sin(time * 23 + 1.3) * 0.04 + Math.sin(time * 3.7) * 0.03;
+}

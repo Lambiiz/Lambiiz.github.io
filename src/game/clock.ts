@@ -17,16 +17,18 @@ export class FixedStepClock {
    * @param frameDelta seconds since the previous frame (already measured once per frame)
    * @param running whether the current phase advances simulation
    * @param step runs one fixed tick and returns its outcome
+   * @param speed time scale chosen by the player (1, 2 or 3); the frame clamp and step cap scale with it
    * @returns the first non-continue outcome, or 'continue'
    */
-  advance(frameDelta: number, running: boolean, step: () => StepOutcome): StepOutcome {
+  advance(frameDelta: number, running: boolean, step: () => StepOutcome, speed = 1): StepOutcome {
     if (!running) {
       this.reset();
       return 'continue';
     }
-    this.accumulator += Math.min(Math.max(frameDelta, 0), MAX_FRAME_DELTA);
+    this.accumulator += Math.min(Math.max(frameDelta, 0), MAX_FRAME_DELTA) * speed;
+    const maxSteps = MAX_STEPS_PER_FRAME * speed;
     let steps = 0;
-    while (this.accumulator >= FIXED_DT - 1e-12 && steps < MAX_STEPS_PER_FRAME) {
+    while (this.accumulator >= FIXED_DT - 1e-12 && steps < maxSteps) {
       this.accumulator -= FIXED_DT;
       steps++;
       const outcome = step();
@@ -35,7 +37,7 @@ export class FixedStepClock {
         return outcome;
       }
     }
-    if (steps === MAX_STEPS_PER_FRAME && this.accumulator > FIXED_DT) this.accumulator = FIXED_DT;
+    if (steps === maxSteps && this.accumulator > FIXED_DT) this.accumulator = FIXED_DT;
     this.accumulator = Math.max(0, this.accumulator);
     this.alpha = Math.min(1, this.accumulator / FIXED_DT);
     return 'continue';

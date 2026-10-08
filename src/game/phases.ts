@@ -3,11 +3,11 @@
 //
 // A run opens with a turn before wave 1. Each wave freezes at its boundary into a turn:
 // draw 4, energy refills to 6, play cards, sacrifice/purge, then End Turn resumes combat.
-import { cardDef, isWeaponId, SLOT_COUNT, STARTING_DECK, TRIALS, TURN, WEAPONS } from './content';
+import { cardDef, isWeaponId, SLOT_COUNT, STARTING_DECK, TRIALS, TURN } from './content';
 import { Deck, sacrificeOffers } from './deck';
 import { deriveStream, Rng } from './rng';
 import { Simulation } from './simulation';
-import type { CardId, CardInstance, Phase, SpellDef, StepOutcome, TrialDef, WeaponInstance } from './types';
+import type { CardId, CardInstance, Phase, StepOutcome, TrialDef, WeaponInstance } from './types';
 
 export type TurnStage = 'idle' | 'targeting' | 'confirmReplace' | 'sacrificeChoice';
 
@@ -15,7 +15,7 @@ export interface TurnState {
   turnIndex: number; // 0 = the opening turn before wave 1
   energy: number;
   stage: TurnStage;
-  /** Card waiting for a target (a tower card, or an active that targets a tower). */
+  /** Tower card waiting for a socket. */
   selected: number | null;
   pendingSlot: number | null;
   /** Up to two cards marked for sacrifice (right-click). */
@@ -128,7 +128,6 @@ export class PhaseController {
   }
 
   private openTurn(turnIndex: number): void {
-    this.sim.resetWaveModifiers(); // passives last exactly one wave
     this.turn = {
       turnIndex,
       energy: TURN.energyPerTurn,
@@ -171,18 +170,17 @@ export class PhaseController {
     return !!t && this.cardCost(uid) <= t.energy;
   }
 
+  /** Only tower cards need a target (an open socket). */
   needsTarget(uid: number): boolean {
     const c = this.deck.inHand(uid);
-    if (!c) return false;
-    return isWeaponId(c.defId) || (cardDef(c.defId) as SpellDef).target === 'tower';
+    return !!c && isWeaponId(c.defId);
   }
 
-  /** Is `slot` a valid drop/target for the card? (unlocked socket for towers, a placed tower for Quicken) */
+  /** Is `slot` a valid drop for the card? (an unlocked socket for towers) */
   validTarget(uid: number, slot: number): boolean {
     const c = this.deck.inHand(uid);
     if (!c || slot < 0 || slot >= SLOT_COUNT || this.sim.locked[slot]) return false;
-    if (isWeaponId(c.defId)) return true;
-    return (cardDef(c.defId) as SpellDef).target === 'tower' && !!this.sim.slots[slot];
+    return isWeaponId(c.defId);
   }
 
   /** Select a card that needs a target (click), or clear the selection with null. */
@@ -196,7 +194,7 @@ export class PhaseController {
     return true;
   }
 
-  /** Play a card from the hand. Towers and targeted actives need `slot`. */
+  /** Play a card from the hand. Towers need `slot`. */
   playCard(uid: number, slot?: number): PlayResult {
     const t = this.active();
     if (!t || (t.stage !== 'idle' && t.stage !== 'targeting')) return 'invalid';
@@ -257,15 +255,10 @@ export class PhaseController {
       replaced = this.sim.slots[slot!];
       instance = this.sim.installWeapon(slot!, def.id);
     } else {
-      this.deck.discardFromHand(card.uid);
-      const e = def.effect;
-      if (e.kind === 'heal') this.sim.heal(e.amount);
-      else if (e.kind === 'blast') this.sim.pendingBlasts.push({ damage: e.damage, radius: e.radius });
-      else if (e.kind === 'charge') {
-        const w = this.sim.slots[slot!];
-        if (w) w.elapsed = WEAPONS[w.defId].interval;
-      } else if (e.kind === 'damageBonus') this.sim.damageBonus += e.amount;
-      else if (e.kind === 'slow') this.sim.speedFactor = Math.max(0.4, this.sim.speedFactor * e.factor);
+      // passives and actives are permanent: the card leaves the deck and its effect stays all run
+      this.deck.takeFromHand(card.uid);
+      if (def.type === 'passive') this.sim.addStat(def.stat, def.amount);
+      else this.sim.addActive(def.id);
     }
     this.emit({ type: 'cardPlayed', card, slot, instance, replaced });
   }

@@ -12,12 +12,13 @@ import { CARD_IDS, cardDef, FIXED_DT, isWeaponId, WEAPONS } from './game/content
 import { FixedStepClock } from './game/clock';
 import { PhaseController, type ControllerEvent, type PlayResult } from './game/phases';
 import { freshSeed } from './game/rng';
-import { chargeFraction } from './game/simulation';
+import { activeFraction, chargeFraction } from './game/simulation';
+import { effRange } from './game/stats';
 import type { SimEvent, StepOutcome } from './game/types';
 import { AudioEngine } from './fx/audio';
 import { Effects } from './fx/effects';
 import { CardInteraction } from './input/cardInteraction';
-import { detailHtml, Hud, type HudState } from './ui/hud';
+import { detailHtml, Hud, type DetailContext, type HudState } from './ui/hud';
 import { BoardView } from './view/board';
 import { CardAssets } from './view/cardAssets';
 import { CardsView, type SocketCard } from './view/cards';
@@ -59,6 +60,10 @@ export class App {
   private hoverOffer: number | null = null;
   private hoverSocketCard: SocketCard | null = null;
   private hoverSlot: number | null = null;
+  /** Player-chosen time speed (1×, 2×, 3×). Applies only while a wave runs. */
+  speed = 1;
+  /** Modifier panel toggled with Tab during waves (always shown during a turn). */
+  showStats = false;
 
   constructor(canvas: HTMLCanvasElement, ui: HTMLElement) {
     this.rig = new SceneRig(canvas);
@@ -87,6 +92,7 @@ export class App {
       clearMarks: () => this.controller.clearMarks(),
       confirmReplace: () => this.controller.confirmReplace(),
       cancel: () => this.cancel(),
+      setSpeed: (n) => this.setSpeed(n),
     });
 
     this.input = new CardInteraction(canvas, this.rig, this.board, this.cards, this.hand, () => this.controller, {
@@ -177,6 +183,10 @@ export class App {
     else if (t.marked.length) this.controller.clearMarks();
   }
 
+  setSpeed(n: number): void {
+    this.speed = Math.max(1, Math.min(3, Math.round(n)));
+  }
+
   setQuality(level: 'high' | 'low'): void {
     this.rig.applyQuality(level);
     this.effects.setQuality(this.rig.settings.particleBudget, this.rig.settings.dustCount);
@@ -225,11 +235,7 @@ export class App {
           this.hand.animateLeave(e.card.uid, 'play');
           this.audio.boon();
           this.board.emitterPulse(1);
-          if (def.type !== 'tower' && def.effect.kind === 'charge' && e.slot !== null) {
-            const c = socketCenter(e.slot);
-            this.effects.landing(new THREE.Vector3(c.x, LID_TOP, c.z));
-          }
-          if (def.type !== 'tower' && def.effect.kind === 'blast') this.hud.toast('Ash will scatter when the wave begins.');
+          this.effects.landing(new THREE.Vector3(0, LID_TOP, 0));
         }
         break;
       }
@@ -261,10 +267,7 @@ export class App {
     const running = to === 'COMBAT' || to === 'CLEARING';
     this.audio.setCombatActive(running);
     this.effects.setFrozen(!running);
-    if (to === 'TURN' && from === 'COMBAT') {
-      this.audio.phase('draft');
-      this.board.setProgress(this.controller.sim.trialIndex + 1); // one aperture light per endured wave
-    }
+    if (to === 'TURN' && from === 'COMBAT') this.audio.phase('draft');
     if (to === 'CLEARING') {
       this.audio.phase('clearing');
       this.hud.toast('No more spawns. Lay the remaining echoes to rest.', 3.5);
@@ -277,8 +280,6 @@ export class App {
     }
     if (to === 'VICTORY') {
       this.audio.phase('victory');
-      this.board.setProgress(8);
-      this.board.openAperture(true);
       this.effects.ceremony('victory');
     }
   }
@@ -299,6 +300,13 @@ export class App {
         break;
       case 'died':
         this.audio.enemyDeath(ev.kind);
+        break;
+      case 'activeFired':
+        if (ev.defId === 'stray') this.audio.weapon('light');
+        else {
+          this.audio.boon();
+          this.board.emitterPulse(0.8);
+        }
         break;
       case 'baseDamaged':
         this.board.baseHit(ev.amount);
@@ -362,6 +370,11 @@ export class App {
     } else if (k === 'm') this.audio.setMuted(!this.audio.muted);
     else if (k === 'q') this.setQuality(this.rig.quality === 'high' ? 'low' : 'high');
     else if (k === 'z') this.rig.resetZoom();
+    else if (k === '1' || k === '2' || k === '3') this.setSpeed(Number(k));
+    else if (k === 'tab') {
+      e.preventDefault();
+      this.showStats = !this.showStats;
+    }
     else if (k === 'e' && c.phase === 'TURN') this.endTurn();
   }
 
@@ -376,7 +389,7 @@ export class App {
     else if (this.hoverHandUid !== null && c.deck.inHand(this.hoverHandUid) && isWeaponId(c.deck.inHand(this.hoverHandUid)!.defId)) def = c.deck.inHand(this.hoverHandUid)!.defId;
     if (def && def in WEAPONS) {
       const w = WEAPONS[def as keyof typeof WEAPONS];
-      this.board.setRange(w.pulseRadius ?? w.range, w.pattern === 'pulse' ? 0xe8a07a : 0x69dad0);
+      this.board.setRange(effRange(w, c.sim.mods), w.pattern === 'pulse' ? 0xe8a07a : 0x69dad0);
     } else this.board.setRange(null);
   }
 
@@ -401,28 +414,34 @@ export class App {
     return this.input.draggedUid;
   }
 
+  detailContext(): DetailContext {
+    const sim = this.controller.sim;
+    const activeCounts: DetailContext['activeCounts'] = {};
+    for (const a of sim.actives) activeCounts[a.defId] = a.count;
+    return { mods: sim.mods, towerIds: sim.placedTowerIds(), activeCounts };
+  }
+
   private updateTooltip(): void {
     const c = this.controller;
+    const ctx = this.detailContext();
     if (this.hoverOffer !== null && c.turn?.offers) {
       const id = c.turn.offers[this.hoverOffer];
       const p = this.hand.offerScreen(this.hoverOffer);
-      if (p) this.hud.setTooltip(detailHtml(id), { x: p.x - this.hand.cardWidth * 0.8, y: p.y - this.hand.cardHeight * 0.8, w: this.hand.cardWidth * 1.6, h: this.hand.cardHeight * 1.6 });
+      if (p) this.hud.setTooltip(detailHtml(id, ctx), { x: p.x - this.hand.cardWidth * 0.8, y: p.y - this.hand.cardHeight * 0.8, w: this.hand.cardWidth * 1.6, h: this.hand.cardHeight * 1.6 });
       return;
     }
     if (this.hoverHandUid !== null && !this.input.isDragging) {
       const card = c.deck.inHand(this.hoverHandUid);
       const r = this.hand.cardRect(this.hoverHandUid);
       if (card && r) {
-        this.hud.setTooltip(detailHtml(card.defId), r);
+        this.hud.setTooltip(detailHtml(card.defId, ctx), r);
         return;
       }
     }
     if (this.hoverSocketCard) {
       const sc = this.hoverSocketCard;
-      const w = c.sim.slots[sc.slot];
       const p = this.rig.project(sc.group.position);
-      const extra = w ? `<dl><dt>Charge</dt><dd>${Math.round(chargeFraction(w) * 100)}%</dd><dt>Socket</dt><dd>${sc.slot + 1} (no effect on combat)</dd></dl>` : '';
-      this.hud.setTooltip(detailHtml(sc.defId, extra), { x: p.x - 30, y: p.y - 40, w: 60, h: 80 });
+      this.hud.setTooltip(detailHtml(sc.defId, ctx), { x: p.x - 30, y: p.y - 40, w: 60, h: 80 });
       return;
     }
     this.hud.setTooltip(null);
@@ -465,7 +484,7 @@ export class App {
   /** One presentation update. `simDelta` feeds the fixed-step clock; `presentDt` drives UI/card motion. */
   update(simDelta: number, presentDt: number): void {
     const c = this.controller;
-    const outcome = this.clock.advance(simDelta, c.isRunning(), this.step);
+    const outcome = this.clock.advance(simDelta, c.isRunning(), this.step, this.speed);
     if (outcome !== 'continue') c.handleOutcome(outcome);
     this.presentTime += presentDt;
 
@@ -480,7 +499,7 @@ export class App {
     this.board.setSoul(this.soulLift, this.soulFade);
 
     const charge = new Map<number, number>();
-    for (const w of sim.slots) if (w) charge.set(w.id, chargeFraction(w));
+    for (const w of sim.slots) if (w) charge.set(w.id, chargeFraction(w, sim.mods));
 
     const t = c.turn;
     this.hand.sync({
@@ -499,6 +518,7 @@ export class App {
     this.hand.update(presentDt);
     this.enemies.update(sim.enemies, alpha, renderSimTime, this.rig.camera);
     this.effects.setView(this.rig.camera, this.rig.viewport.height);
+    this.effects.bellRadius = effRange(WEAPONS.bell, sim.mods);
     this.effects.update(renderSimTime, presentDt, sim.projectiles, alpha);
     if (this.rig.viewport.width > 0) this.input.refreshHover();
     this.updateHalos();
@@ -517,6 +537,12 @@ export class App {
       suspended: c.suspended,
       pauseReason: c.pauseReason,
       hp: s.baseHp,
+      maxHp: s.maxHp,
+      speed: this.speed,
+      mods: s.mods,
+      actives: s.actives.map((a) => ({ id: a.defId, count: a.count, fraction: activeFraction(a) })),
+      towerIds: s.placedTowerIds(),
+      showStats: this.showStats,
       waveIndex: s.trialIndex,
       trialTime: s.trialTime,
       trialDuration: s.trial.durationSeconds,

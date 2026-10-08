@@ -1,5 +1,5 @@
 // Plays one entire run with ordinary inputs only: real canvas drags/clicks/right-clicks and DOM
-// buttons, no fast-forward, no fixtures. The logical snapshot is read only to decide what a player
+// buttons, no dev fast-forward, no fixtures (it does press the in-game 3× speed button). The logical snapshot is read only to decide what a player
 // would do and to log evidence. Usage: node tools/fullrun.mjs [baseUrl] [quality] [seed|-] [WxH]
 import { chromium } from 'playwright';
 import fs from 'node:fs';
@@ -97,23 +97,18 @@ for (;;) {
       actions.push(`${(await snap()).slots[free[0]] ? 'placed' : 'FAILED to place'} ${got.defId} in socket ${free[0] + 1}`);
     }
   }
-  // 3. spend remaining energy on spells (click; Quicken then click a tower)
+  // 3. spend remaining energy on passives/actives by click (they are permanent)
   for (;;) {
     s = await snap();
-    const c = s.hand.find((x) => !WEAPONS.includes(x.defId) && !(x.defId === 'mend' && s.hp > 92) && !(x.defId === 'quicken' && !s.slots.some(Boolean)));
+    const c = s.hand.find((x) => !WEAPONS.includes(x.defId));
     if (!c || s.turn.energy < 1) break;
     const p = await cardAt(c.uid);
     await page.mouse.click(p.x, p.y);
-    if (c.defId === 'quicken') {
-      const slot = s.slots.findIndex(Boolean);
-      const sp = await page.evaluate((k) => __PALIMPSEST__.socketScreen(k), slot);
-      await page.mouse.click(sp.x, sp.y);
-    }
     actions.push(`played ${c.defId}`);
     await page.waitForFunction((u) => !__PALIMPSEST__.snapshot().hand.some((x) => x.uid === u), c.uid, { timeout: 60000 });
   }
   s = await snap();
-  const entry = { turn: s.turn.turnIndex, hp: s.hp, energyLeft: s.turn.energy, deck: s.deckSize, foesFrozen: s.enemies.length, actions, towers: s.slots.map((w) => w && w.defId), wallSeconds: Math.round((Date.now() - t0) / 1000) };
+  const entry = { turn: s.turn.turnIndex, hp: s.hp, maxHp: s.maxHp, mods: s.mods, actives: s.actives.map((a) => `${a.defId}×${a.count}`), energyLeft: s.turn.energy, deck: s.deckSize, foesFrozen: s.enemies.length, actions, towers: s.slots.map((w) => w && w.defId), wallSeconds: Math.round((Date.now() - t0) / 1000) };
   log.turns.push(entry);
   console.log(JSON.stringify(entry));
   if (s.turn.turnIndex === 2) {
@@ -122,6 +117,8 @@ for (;;) {
   }
   await page.click('#btn-end-turn');
   await page.waitForFunction(() => __PALIMPSEST__.snapshot().phase !== 'TURN', null, { timeout: 60000 });
+  // play at 3× like an impatient player (an ordinary HUD button)
+  if (s.turn.turnIndex === 0) await page.click('#btn-speed-3');
   if (s.turn.turnIndex === 4) {
     await page.waitForFunction(() => __PALIMPSEST__.snapshot().trialTime > 20, null, { timeout: 3_600_000, polling: 500 });
     await page.screenshot({ path: 'docs/screenshots/15-fullrun-wave5-swarm.png', timeout: 180000 });

@@ -1,7 +1,7 @@
 // The run's Memory Deck: draw pile, hand and discard pile. Pure and seeded.
 // Rules: draw N per turn; when the draw pile runs out the discard pile is shuffled back in;
-// unplayed cards are discarded at the end of a turn. Placed towers, sacrificed and purged cards
-// leave the cycle entirely.
+// unplayed cards are discarded at the end of a turn. Played cards (towers, passives, actives),
+// sacrificed and purged cards leave the cycle entirely.
 import { CARD_IDS, isWeaponId } from './content';
 import type { Rng } from './rng';
 import type { CardId, CardInstance } from './types';
@@ -80,17 +80,10 @@ export class Deck {
     return this.hand.find((c) => c.uid === uid);
   }
 
-  /** Remove a card from the hand without putting it anywhere (played tower, sacrificed, purged). */
+  /** Remove a card from the hand without putting it anywhere (played, sacrificed, purged). */
   takeFromHand(uid: number): CardInstance | undefined {
     const i = this.hand.findIndex((c) => c.uid === uid);
     return i < 0 ? undefined : this.hand.splice(i, 1)[0];
-  }
-
-  /** A played active/passive card goes to the discard pile. */
-  discardFromHand(uid: number): CardInstance | undefined {
-    const c = this.takeFromHand(uid);
-    if (c) this.discard.push(c);
-    return c;
   }
 
   /** Add a newly created card (from a sacrifice) to the hand. */

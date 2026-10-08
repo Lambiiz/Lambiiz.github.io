@@ -1,9 +1,9 @@
-// The floating board, brass rim, the Base (stepped pedestal, enamel lid, six sockets,
-// seam and shared soul emitter) and the return aperture beyond the rim.
+// The wooden table, the inked arena, the single candle and the old book, the fog that swallows
+// the table's edges, and the Base (stepped pedestal, lid, six sockets, seam and soul emitter).
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ARENA, BASE, SLOT_COUNT, TRIAL_COUNT } from '../game/content';
+import { ARENA, BASE, SLOT_COUNT } from '../game/content';
 import * as art from './art';
 import {
   BAND_TOP,
@@ -17,6 +17,12 @@ import {
   LID_TOP,
   LID_W,
   PLINTH_TOP,
+  BOOK_POS,
+  CANDLE_HEIGHT,
+  CANDLE_POS,
+  candleFlicker,
+  FOG_WORLD,
+  FOG_Y,
   SOCKET_FLOOR,
   socketCenter,
 } from './layout';
@@ -88,22 +94,10 @@ export class BoardView {
   private warnLevel = 0;
   private baseShake = 0;
   private baseShakeAge = 1;
-  private apertureSegments: number[] = [];
-  private apertureLights!: THREE.InstancedMesh;
-  private segColor = new THREE.Color();
-  private static readonly SEG_OFF = new THREE.Color(0x10151f);
-  private static readonly SEG_ON = new THREE.Color(0x69dad0).multiplyScalar(2.2);
-  private apertureIris: THREE.Mesh[] = [];
-  private apertureCore: THREE.Mesh;
-  private apertureCoreMat: THREE.MeshBasicMaterial;
-  private apertureOpen = 0;
-  private apertureOpenTarget = 0;
-  private progress = 0;
   private soulLift = 0;
   private soulFade = 1;
   private pulse = 0;
   private disposables: { dispose(): void }[] = [];
-  readonly apertureGroup = new THREE.Group();
   private rangeRing: THREE.Mesh;
   private rangeMat: THREE.MeshBasicMaterial;
   private rangeFill: THREE.Mesh;
@@ -111,8 +105,8 @@ export class BoardView {
   private rangeTarget = 0;
   private rangeLevel = 0;
   private rangeRadius = 1;
-  private flames: THREE.Mesh[] = [];
-  private candleLights: THREE.PointLight[] = [];
+  private flame: THREE.Mesh;
+  private flameLight: THREE.PointLight;
   private lockCovers: THREE.Mesh[] = [];
 
   constructor(renderer: THREE.WebGLRenderer) {
@@ -150,11 +144,12 @@ export class BoardView {
     this.root.add(decal);
 
     // range preview ring (hovering a placed or selected tower)
-    this.rangeMat = track(new THREE.MeshBasicMaterial({ color: 0x69dad0, transparent: true, opacity: 0, depthWrite: false }));
+    // drawn after (above) the fog veil so long ranges stay readable at the dark edges
+    this.rangeMat = track(new THREE.MeshBasicMaterial({ color: 0x69dad0, transparent: true, opacity: 0, depthWrite: false, depthTest: false }));
     this.rangeRing = new THREE.Mesh(track(new THREE.RingGeometry(0.985, 1, 160)), this.rangeMat);
     this.rangeRing.rotation.x = -Math.PI / 2;
     this.rangeRing.position.y = 0.03;
-    this.rangeRing.renderOrder = 2;
+    this.rangeRing.renderOrder = 10;
     this.rangeRing.visible = false;
     this.root.add(this.rangeRing);
     this.rangeFillMat = track(new THREE.MeshBasicMaterial({ color: 0x69dad0, transparent: true, opacity: 0, depthWrite: false }));
@@ -164,56 +159,46 @@ export class BoardView {
     this.rangeFill.visible = false;
     this.root.add(this.rangeFill);
 
-    // low-contrast table clutter outside the arena: candles, bone dice, an old book, coins
+    // the only props: one tall candle (the scene's key light, see SceneRig) and an old book
     const wax = track(new THREE.MeshStandardMaterial({ color: 0xcbbc98, roughness: 0.8 }));
-    const dieMat = track(new THREE.MeshStandardMaterial({ map: tex(art.drawDie()), roughness: 0.6 }));
     const bookMat = track(new THREE.MeshStandardMaterial({ color: 0x3a2418, roughness: 0.9 }));
     const pageMat = track(new THREE.MeshStandardMaterial({ color: 0xb9a888, roughness: 0.95 }));
-    const flameMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc36b).multiplyScalar(3) }));
-    const candleGeo = track(new THREE.CylinderGeometry(0.55, 0.62, 1, 16));
-    const flameGeo = track(new THREE.SphereGeometry(0.16, 10, 8));
-    flameGeo.scale(1, 2.2, 1);
-    for (const [x, z, h] of [
-      [-R - 6, -R + 4, 3.2],
-      [-R - 4.4, -R + 6.2, 2.0],
-      [R + 6, -R + 1, 2.6],
-    ] as const) {
-      const candle = new THREE.Mesh(candleGeo, wax);
-      candle.scale.set(1, h, 1);
-      candle.position.set(x, h / 2, z);
-      candle.castShadow = true;
-      this.root.add(candle);
-      const flame = new THREE.Mesh(flameGeo, flameMat);
-      flame.position.set(x, h + 0.4, z);
-      this.root.add(flame);
-      this.flames.push(flame);
-      const light = new THREE.PointLight(0xffb060, 30, 40, 1.6);
-      light.position.set(x, h + 1.2, z);
-      this.root.add(light);
-      this.candleLights.push(light);
-    }
-    const dieGeo = track(new RoundedBoxGeometry(1.2, 1.2, 1.2, 3, 0.18));
-    for (const [x, z, r] of [
-      [-R - 3, -R + 12, 0.4],
-      [-R - 1.4, -R + 14, 1.1],
-    ] as const) {
-      const die = new THREE.Mesh(dieGeo, dieMat);
-      die.position.set(x, 0.6, z);
-      die.rotation.set(0, r, 0);
-      die.castShadow = true;
-      this.root.add(die);
-    }
+    const flameMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc36b).multiplyScalar(4) }));
+    const cp = CANDLE_POS;
+    const candleGeo = track(new THREE.CylinderGeometry(0.9, 1.0, CANDLE_HEIGHT, 20));
+    const candle = new THREE.Mesh(candleGeo, wax);
+    candle.position.set(cp.x, CANDLE_HEIGHT / 2, cp.z);
+    candle.castShadow = true;
+    this.root.add(candle);
+    const dish = new THREE.Mesh(track(new THREE.CylinderGeometry(2.0, 2.2, 0.3, 28)), darkBrass);
+    dish.position.set(cp.x, 0.15, cp.z);
+    dish.castShadow = true;
+    dish.receiveShadow = true;
+    this.root.add(dish);
+    const flameGeo = track(new THREE.SphereGeometry(0.26, 12, 10));
+    flameGeo.scale(1, 2.3, 1);
+    this.flame = new THREE.Mesh(flameGeo, flameMat);
+    this.flame.position.set(cp.x, CANDLE_HEIGHT + 0.6, cp.z);
+    this.root.add(this.flame);
+    // a close, unshadowed glow so the candle and its dish read warmly
+    this.flameLight = new THREE.PointLight(0xffb060, 60, 26, 1.6);
+    this.flameLight.position.set(cp.x, CANDLE_HEIGHT + 1.4, cp.z);
+    this.root.add(this.flameLight);
     const book = new THREE.Mesh(track(new RoundedBoxGeometry(9, 1.4, 12, 3, 0.25)), [pageMat, bookMat, bookMat, bookMat, pageMat, pageMat]);
-    book.position.set(R + 10, 0.7, -R + 8);
+    book.position.set(BOOK_POS.x, 0.7, BOOK_POS.z);
     book.rotation.y = 0.35;
     book.castShadow = true;
+    book.receiveShadow = true;
     this.root.add(book);
-    const coinGeo = track(new THREE.CylinderGeometry(0.5, 0.5, 0.08, 20));
-    for (let i = 0; i < 5; i++) {
-      const coin = new THREE.Mesh(coinGeo, darkBrass);
-      coin.position.set(R + 3 + i * 0.35, 0.04 + i * 0.08, -R + 14 + (i % 2) * 0.1);
-      this.root.add(coin);
-    }
+
+    // fog: a dark veil just above the pieces that clears toward the Base and around the candle, so
+    // foes walk in out of the dark. Tall things (the candle, effects in the air) rise above it.
+    const fogTex = tex(art.drawFogVeil(FOG_WORLD, FOG_Y, CANDLE_POS, BOOK_POS));
+    const fog = new THREE.Mesh(track(new THREE.PlaneGeometry(FOG_WORLD, FOG_WORLD)), track(new THREE.MeshBasicMaterial({ map: fogTex, transparent: true, depthWrite: false })));
+    fog.rotation.x = -Math.PI / 2;
+    fog.position.y = FOG_Y;
+    fog.renderOrder = 5;
+    this.root.add(fog);
 
     // --- Base: stepped pedestal
     const hx = BASE.halfX;
@@ -388,49 +373,6 @@ export class BoardView {
 
     this.root.add(this.baseGroup);
 
-    // --- return aperture beyond the far rim
-    // beyond the far-left rim, angled toward the viewer so it reads clearly
-    this.apertureGroup.position.set(-ARENA.boardRadius - 8, 0, -12);
-    this.apertureGroup.rotation.y = 0.45;
-    this.apertureGroup.scale.setScalar(2.4);
-    const pedestal = new THREE.Mesh(track(new RoundedBoxGeometry(2.6, 0.5, 1.2, 3, 0.1)), darkBrass);
-    pedestal.position.y = -0.15;
-    this.apertureGroup.add(pedestal);
-    const ring = new THREE.Mesh(track(new THREE.TorusGeometry(1.55, 0.13, 16, 96)), brass);
-    ring.position.y = 1.85;
-    this.apertureGroup.add(ring);
-    const inner = new THREE.Mesh(track(new THREE.TorusGeometry(1.3, 0.04, 8, 96)), darkBrass);
-    inner.position.y = 1.85;
-    this.apertureGroup.add(inner);
-    // eight progress lights, one per trial, in a single instanced draw
-    const segGeo = track(new THREE.BoxGeometry(0.34, 0.12, 0.16));
-    this.apertureLights = new THREE.InstancedMesh(segGeo, track(new THREE.MeshBasicMaterial({ color: 0xffffff })), TRIAL_COUNT);
-    for (let i = 0; i < TRIAL_COUNT; i++) {
-      const a = Math.PI / 2 + ((i + 0.5) / TRIAL_COUNT - 0.5) * Math.PI * 1.7;
-      this.apertureLights.setMatrixAt(i, trs(Math.cos(a) * 1.78, 1.85 + Math.sin(a) * 1.78, 0.02, 0, 0, a + Math.PI / 2));
-      this.apertureLights.setColorAt(i, new THREE.Color(0x10151f));
-      this.apertureSegments.push(0);
-    }
-    this.apertureGroup.add(this.apertureLights);
-    // iris leaves that slide open on victory
-    const leafShape = new THREE.Shape();
-    leafShape.moveTo(0, 0);
-    leafShape.absarc(0, 0, 1.32, 0, Math.PI / 3 + 0.05, false);
-    leafShape.lineTo(0, 0);
-    const leafGeo = track(new THREE.ShapeGeometry(leafShape, 16));
-    const leafMat = track(new THREE.MeshStandardMaterial({ color: 0x24324f, metalness: 0.6, roughness: 0.35, side: THREE.DoubleSide }));
-    for (let i = 0; i < 6; i++) {
-      const leaf = new THREE.Mesh(leafGeo, leafMat);
-      leaf.position.set(0, 1.85, 0.01);
-      leaf.rotation.z = (i / 6) * Math.PI * 2;
-      this.apertureGroup.add(leaf);
-      this.apertureIris.push(leaf);
-    }
-    this.apertureCoreMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0x69dad0).multiplyScalar(2.4), transparent: true, opacity: 0.0, depthWrite: false }));
-    this.apertureCore = new THREE.Mesh(track(new THREE.CircleGeometry(1.3, 48)), this.apertureCoreMat);
-    this.apertureCore.position.set(0, 1.85, -0.02);
-    this.apertureGroup.add(this.apertureCore);
-    this.root.add(this.apertureGroup);
   }
 
   /** Points used to fit the combat camera. */
@@ -466,14 +408,6 @@ export class BoardView {
     this.rangeFillMat.color.setHex(color);
   }
 
-  setProgress(trialsCleared: number): void {
-    this.progress = trialsCleared;
-  }
-
-  openAperture(open: boolean): void {
-    this.apertureOpenTarget = open ? 1 : 0;
-  }
-
   setSoul(lift: number, fade: number): void {
     this.soulLift = lift;
     this.soulFade = fade;
@@ -502,9 +436,6 @@ export class BoardView {
   reset(): void {
     this.warnLevel = 0;
     this.baseShake = 0;
-    this.apertureOpen = 0;
-    this.apertureOpenTarget = 0;
-    this.progress = 0;
     this.soulLift = 0;
     this.soulFade = 1;
     this.pulse = 0;
@@ -532,12 +463,10 @@ export class BoardView {
       this.rangeMat.opacity = 0.85 * this.rangeLevel;
       this.rangeFillMat.opacity = 0.07 * this.rangeLevel;
     }
-    // candle flicker
-    this.flames.forEach((f, i) => {
-      const k = 1 + Math.sin(time * 11 + i * 2.1) * 0.08 + Math.sin(time * 23 + i) * 0.05;
-      f.scale.set(1, k, 1);
-      this.candleLights[i].intensity = 30 * k;
-    });
+    // candle flicker (the shadow-casting key light flickers with it in SceneRig)
+    const flick = candleFlicker(time);
+    this.flame.scale.set(1, flick, 1);
+    this.flameLight.intensity = 60 * flick;
 
     this.pulse = Math.max(0, this.pulse - simDt * 5);
     const breathe = 0.5 + 0.5 * Math.sin(time * 1.7);
@@ -554,23 +483,6 @@ export class BoardView {
       s.halo.visible = s.haloLevel > 0.01;
       s.haloMat.color.copy(s.haloColor);
     }
-
-    for (let i = 0; i < this.apertureSegments.length; i++) {
-      const lit = i < this.progress ? 1 : 0;
-      const target = lit * (0.85 + 0.15 * Math.sin(time * 2 + i)) + this.apertureOpen * 0.6;
-      this.apertureSegments[i] += (target - this.apertureSegments[i]) * (1 - Math.exp(-presentDt * 4));
-      this.segColor.copy(BoardView.SEG_OFF).lerp(BoardView.SEG_ON, this.apertureSegments[i]);
-      this.apertureLights.setColorAt(i, this.segColor);
-    }
-    if (this.apertureLights.instanceColor) this.apertureLights.instanceColor.needsUpdate = true;
-    this.apertureOpen += (this.apertureOpenTarget - this.apertureOpen) * (1 - Math.exp(-presentDt * 1.6));
-    this.apertureIris.forEach((leaf, i) => {
-      const a = (i / 6) * Math.PI * 2;
-      const r = this.apertureOpen * 1.25;
-      leaf.position.set(Math.cos(a + 0.5) * r, 1.85 + Math.sin(a + 0.5) * r, 0.01);
-      leaf.scale.setScalar(1 - this.apertureOpen * 0.75);
-    });
-    this.apertureCoreMat.opacity = 0.15 + this.apertureOpen * 0.85;
   }
 
   dispose(): void {

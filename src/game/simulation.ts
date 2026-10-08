@@ -1,22 +1,28 @@
 // Deterministic fixed-step combat simulation. It never reads meshes, uniforms or wall-clock time.
 //
 // Step order (documented in README):
-//   0. queued card effects that resolve when a wave begins (e.g. Scatter Ash)
 //   1. scheduled spawns (only while the trial clock is spawning)
 //   2. enemy movement toward the Base center, then soft separation between foes (2b)
 //   3. weapons charge and fire in stable creation-ID order; instant damage resolves immediately
+//   3b. active cards charge and fire in the order they were first played
 //   4. projectile travel and resolved hits
 //   5. dead cleanup
 //   6. surviving enemies that contact the Base footprint deal damage once and are removed
 //   7. Base defeat check
 //   8. phase clock (trial boundary / clearing start / victory)
-import { ARENA, BASE, CROWD, ENEMIES, FIXED_DT, SLOT_COUNT, SLOTS_UNLOCKED_AT_START, TRIALS, WEAPONS } from './content';
+import { activeCooldown, ARENA, BASE, CROWD, ENEMIES, FIXED_DT, NO_MODS, SLOT_COUNT, SLOTS_UNLOCKED_AT_START, SPELLS, TRIALS, WEAPONS } from './content';
+import { averageDps, damageMultiplier, effInterval, effRange, maxIntegrity } from './stats';
 import { deriveStream, Rng } from './rng';
 import type {
+  ActiveDef,
+  ActiveId,
+  ActiveInstance,
   EnemyKind,
   EnemyState,
   ProjectileState,
   SimEvent,
+  StatId,
+  StatMods,
   StepOutcome,
   TrialDef,
   WeaponDef,
@@ -57,11 +63,10 @@ export class Simulation {
   spawnProgress = 0;
 
   baseHp = BASE.maxHealth;
-  /** Passive card modifiers; they last for one wave (reset when the next turn opens). */
-  damageBonus = 0;
-  speedFactor = 1;
-  /** Active effects queued to resolve on the first tick of the next wave. */
-  pendingBlasts: { damage: number; radius: number }[] = [];
+  /** Permanent run-wide modifiers from passive cards. */
+  mods: StatMods = { ...NO_MODS };
+  /** Played active cards, in first-played order. */
+  actives: ActiveInstance[] = [];
   /** Locked sockets cannot hold towers until unlocked by some run event. */
   locked: boolean[] = Array.from({ length: SLOT_COUNT }, (_, i) => !SLOTS_UNLOCKED_AT_START.includes(i));
   enemies: EnemyState[] = [];
@@ -77,6 +82,7 @@ export class Simulation {
   private nextWeaponId = 1;
   private nextProjectileId = 1;
   private spawnRng: Rng;
+  private activeRng: Rng;
   private events: SimEvent[] = [];
 
   constructor(opts: SimOptions) {
@@ -84,6 +90,7 @@ export class Simulation {
     this.trials = opts.trials ?? TRIALS;
     this.spawningEnabled = opts.spawning ?? true;
     this.spawnRng = deriveStream(opts.seed, 'spawns');
+    this.activeRng = deriveStream(opts.seed, 'actives');
   }
 
   get trial(): TrialDef {
@@ -91,16 +98,40 @@ export class Simulation {
   }
 
   get damageMultiplier(): number {
-    return 1 + this.damageBonus;
+    return damageMultiplier(this.mods);
+  }
+
+  get maxHp(): number {
+    return maxIntegrity(this.mods);
+  }
+
+  /** Apply a passive card. Max Integrity also restores the amount it adds. */
+  addStat(stat: StatId, amount: number): void {
+    const before = this.maxHp;
+    this.mods[stat] += amount;
+    if (stat === 'maxIntegrity') this.baseHp = Math.min(this.maxHp, this.baseHp + (this.maxHp - before));
+  }
+
+  /** Apply an active card: a new effect, or one more copy (shorter cooldown, progress kept). */
+  addActive(id: ActiveId): ActiveInstance {
+    let a = this.actives.find((x) => x.defId === id);
+    if (a) {
+      const frac = a.elapsed / activeCooldown(id, a.count);
+      a.count++;
+      a.elapsed = Math.min(1, frac) * activeCooldown(id, a.count);
+    } else {
+      a = { defId: id, count: 1, elapsed: 0, uses: 0 };
+      this.actives.push(a);
+    }
+    return a;
+  }
+
+  placedTowerIds(): WeaponId[] {
+    return this.weaponsInOrder().map((w) => w.defId);
   }
 
   unlockSlot(slot: number): void {
     this.locked[slot] = false;
-  }
-
-  resetWaveModifiers(): void {
-    this.damageBonus = 0;
-    this.speedFactor = 1;
   }
 
   /** Weapons sorted by stable creation ID. Slot order never matters. */
@@ -175,12 +206,6 @@ export class Simulation {
     this.tick++;
     this.simTime = this.tick * dt;
 
-    // 0. queued wave-start effects
-    if (this.pendingBlasts.length > 0) {
-      for (const b of this.pendingBlasts) this.resolveBlast(b.damage * this.damageMultiplier, b.radius);
-      this.pendingBlasts = [];
-    }
-
     // 1. spawns
     if (this.isSpawningWindow()) {
       this.spawnProgress += this.spawnRate() * dt;
@@ -195,7 +220,7 @@ export class Simulation {
       if (!e.alive) continue;
       const d = Math.hypot(e.x, e.z);
       if (d > EPS) {
-        const s = Math.min(e.speed * this.speedFactor * dt, d);
+        const s = Math.min(e.speed * dt, d);
         e.x -= (e.x / d) * s;
         e.z -= (e.z / d) * s;
       }
@@ -209,6 +234,8 @@ export class Simulation {
 
     // 3. weapons, by stable creation ID
     for (const w of this.weaponsInOrder()) this.updateWeapon(w, dt);
+    // 3b. active cards
+    for (const a of this.actives) this.updateActive(a, dt);
 
     // 4. projectiles
     this.updateProjectiles(dt);
@@ -323,10 +350,35 @@ export class Simulation {
     }
   }
 
-  private resolveBlast(damage: number, radius: number): void {
-    const victims = this.enemies.filter((e) => e.alive && Math.hypot(e.x, e.z) <= radius + EPS);
-    this.events.push({ type: 'blast', t: this.simTime, radius, hits: victims.length });
-    for (const v of victims) this.damage(v, damage, 'ash');
+  /** Active cards hold when ready but have nothing to do (no foes / no towers / full Integrity). */
+  private updateActive(a: ActiveInstance, dt: number): void {
+    const def = SPELLS[a.defId] as ActiveDef;
+    const cd = activeCooldown(a.defId, a.count);
+    a.elapsed += dt;
+    if (a.elapsed < cd - EPS) return;
+    const eff = def.effect;
+    if (eff.kind === 'strike') {
+      const alive = this.enemies.filter((e) => e.alive);
+      const dmg = averageDps(this.placedTowerIds(), this.mods) * eff.dpsRatio;
+      if (alive.length === 0 || dmg <= 0) {
+        a.elapsed = cd;
+        return;
+      }
+      const target = alive[this.activeRng.int(alive.length)];
+      a.elapsed = 0;
+      a.uses++;
+      this.events.push({ type: 'activeFired', t: this.simTime, defId: a.defId, enemyId: target.id, amount: dmg, x: target.x, z: target.z });
+      this.damage(target, dmg, a.defId);
+    } else {
+      if (this.baseHp >= this.maxHp - EPS) {
+        a.elapsed = cd;
+        return;
+      }
+      a.elapsed = 0;
+      a.uses++;
+      const healed = this.heal(eff.amount);
+      this.events.push({ type: 'activeFired', t: this.simTime, defId: a.defId, enemyId: null, amount: healed, x: 0, z: 0 });
+    }
   }
 
   /** Called by the phase controller when a turn ends and the next wave begins. */
@@ -339,7 +391,7 @@ export class Simulation {
 
   heal(amount: number): number {
     const before = this.baseHp;
-    this.baseHp = Math.min(BASE.maxHealth, this.baseHp + amount);
+    this.baseHp = Math.min(this.maxHp, this.baseHp + amount);
     const healed = this.baseHp - before;
     this.events.push({ type: 'healed', t: this.simTime, amount: healed, hp: this.baseHp });
     return healed;
@@ -396,26 +448,27 @@ export class Simulation {
   }
 
   private hasTarget(def: WeaponDef): boolean {
-    if (def.pattern === 'pulse') return this.anyInPulse(def.pulseRadius ?? def.range);
-    return this.nearestThreat(def.range) !== null;
+    if (def.pattern === 'pulse') return this.anyInPulse(effRange(def, this.mods));
+    return this.nearestThreat(effRange(def, this.mods)) !== null;
   }
 
   private updateWeapon(w: WeaponInstance, dt: number): void {
     const def = WEAPONS[w.defId];
-    const wasHeldFull = w.elapsed >= def.interval - EPS;
+    const interval = effInterval(def, this.mods);
+    const wasHeldFull = w.elapsed >= interval - EPS;
     w.elapsed += dt;
-    if (w.elapsed < def.interval - EPS) return;
+    if (w.elapsed < interval - EPS) return;
     if (!this.hasTarget(def)) {
-      w.elapsed = def.interval; // hold full; never bank shots
+      w.elapsed = interval; // hold full; never bank shots
       return;
     }
     // A held-ready weapon restarts from zero; otherwise preserve legitimate fixed-step overshoot.
-    w.elapsed = wasHeldFull ? 0 : Math.min(Math.max(0, w.elapsed - def.interval), dt);
+    w.elapsed = wasHeldFull ? 0 : Math.min(Math.max(0, w.elapsed - interval), dt);
     w.shots++;
     this.fire(w, def);
   }
 
-  private damage(e: EnemyState, amount: number, source: WeaponId | 'ash'): void {
+  private damage(e: EnemyState, amount: number, source: WeaponId | ActiveId): void {
     if (!e.alive) return;
     e.hp -= amount;
     this.totalDamageDealt += amount;
@@ -430,10 +483,11 @@ export class Simulation {
 
   private fire(w: WeaponInstance, def: WeaponDef): void {
     const mul = this.damageMultiplier;
+    const range = effRange(def, this.mods);
     const base = { type: 'fired' as const, t: this.simTime, weaponId: w.id, defId: def.id, slot: w.slot };
     switch (def.pattern) {
       case 'projectile': {
-        const target = this.nearestThreat(def.range)!;
+        const target = this.nearestThreat(range)!;
         this.projectiles.push({
           id: this.nextProjectileId++,
           weaponId: w.id,
@@ -452,7 +506,7 @@ export class Simulation {
         break;
       }
       case 'lance': {
-        const target = this.nearestThreat(def.range)!;
+        const target = this.nearestThreat(range)!;
         const pt = { x: target.x, z: target.z };
         this.events.push({ ...base, targets: [target.id], points: [pt] });
         this.damage(target, def.damage * mul, def.id);
@@ -463,7 +517,7 @@ export class Simulation {
         const hit = new Set<number>();
         const targets: number[] = [];
         const points: { x: number; z: number }[] = [];
-        let cur = this.nearestThreat(def.range);
+        let cur = this.nearestThreat(range);
         const pending: { e: EnemyState; dmg: number }[] = [];
         for (let i = 0; i < hops.length && cur; i++) {
           hit.add(cur.id);
@@ -477,7 +531,7 @@ export class Simulation {
         break;
       }
       case 'pulse': {
-        const r = def.pulseRadius ?? def.range;
+        const r = range;
         const victims = this.enemies.filter((e) => e.alive && Math.hypot(e.x, e.z) <= r + EPS).sort((a, b) => a.id - b.id);
         this.events.push({ ...base, targets: victims.map((v) => v.id), points: [] });
         for (const v of victims) this.damage(v, def.damage * mul, def.id);
@@ -495,7 +549,7 @@ export class Simulation {
         if (!p.retargeted) {
           p.retargeted = true;
           target = this.nearestTo(p.x, p.z, Infinity, new Set()) ?? undefined;
-          if (target && Math.hypot(target.x, target.z) > WEAPONS.needle.range + EPS) target = undefined;
+          if (target && Math.hypot(target.x, target.z) > effRange(WEAPONS.needle, this.mods) + EPS) target = undefined;
           if (target) p.targetId = target.id;
         }
         if (!target) {
@@ -538,7 +592,10 @@ export function pickWeighted(rng: Rng, weights: Partial<Record<EnemyKind, number
   return entries[entries.length - 1][0];
 }
 
-export function chargeFraction(w: WeaponInstance): number {
-  const def = WEAPONS[w.defId];
-  return Math.min(1, Math.max(0, w.elapsed / def.interval));
+export function chargeFraction(w: WeaponInstance, mods: StatMods = NO_MODS): number {
+  return Math.min(1, Math.max(0, w.elapsed / effInterval(WEAPONS[w.defId], mods)));
+}
+
+export function activeFraction(a: ActiveInstance): number {
+  return Math.min(1, Math.max(0, a.elapsed / activeCooldown(a.defId, a.count)));
 }

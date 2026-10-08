@@ -39,12 +39,14 @@ export function installDevApi(app: App): void {
         kills: s.kills,
         arrivals: s.arrivals,
         spawnProgress: s.spawnProgress,
-        damageBonus: s.damageBonus,
-        speedFactor: s.speedFactor,
+        maxHp: s.maxHp,
+        mods: { ...s.mods },
+        actives: s.actives.map((a) => ({ ...a })),
+        speed: app.speed,
         locked: [...s.locked],
         enemies: s.enemies.map((e) => ({ id: e.id, kind: e.kind, x: e.x, z: e.z, hp: e.hp })),
         projectiles: s.projectiles.map((p) => ({ id: p.id, x: p.x, z: p.z, life: p.life })),
-        slots: s.slots.map((w) => (w ? { id: w.id, defId: w.defId, slot: w.slot, elapsed: w.elapsed, charge: chargeFraction(w), shots: w.shots } : null)),
+        slots: s.slots.map((w) => (w ? { id: w.id, defId: w.defId, slot: w.slot, elapsed: w.elapsed, charge: chargeFraction(w, s.mods), shots: w.shots } : null)),
         turn: c.turn ? JSON.parse(JSON.stringify(c.turn)) : null,
         hand: c.deck.hand.map((x) => ({ ...x })),
         drawPile: c.deck.drawPile.length,
@@ -58,6 +60,12 @@ export function installDevApi(app: App): void {
     },
     restart(seed?: number) {
       app.restart(seed);
+    },
+    endTurn() {
+      return app.controller.endTurn();
+    },
+    playCard(uid: number, slot?: number) {
+      return app.controller.playCard(uid, slot);
     },
     advanceTicks(n: number) {
       app.advanceTicks(n);

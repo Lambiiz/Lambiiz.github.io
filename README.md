@@ -2,12 +2,13 @@
 
 *Reclaim your memories. Endure eight waves. Return to life.*
 
-A browser defense deckbuilder played on a candle-lit wooden table. In an afterlife between death
-and new life, a soul defends an antique reincarnation instrument: a carved reliquary Base with six
-card sockets (two open at the start of a run). Tower cards seated in the sockets fill with
-turquoise light from bottom to top and fire on their own from a shared emitter. Small bone
-game-piece foes swarm in from the edge of a large inked arena. Between waves, time freezes for a
-turn: you draw 4, get 6 energy, play cards, and sacrifice or purge cards to reshape your deck.
+A browser defense deckbuilder played on a wooden table lit by a single candle. In an afterlife
+between death and new life, a soul defends an antique reincarnation instrument: a carved reliquary
+Base with six card sockets (two open at the start of a run). Tower cards seated in the sockets fill
+with turquoise light from bottom to top and fire on their own from a shared emitter. Small bone
+game-piece foes walk in out of the fog at the table's edge, throwing long candle shadows. Between
+waves, time freezes for a turn: you draw 4, get 6 energy, play cards, and sacrifice or purge cards
+to reshape your deck.
 
 Built with Three.js r186 (WebGL2), TypeScript (strict), Vite and Vitest. No backend, no paid or
 downloaded assets: every texture, model, effect and sound is generated procedurally at runtime.
@@ -60,9 +61,12 @@ Pages serves the `palimpsest` branch **directly from the repository root**: the 
 
 | Type | Colour | Behaviour |
 |---|---|---|
-| Tower | muted dark blue | seats in an open socket; fires automatically; leaves the deck cycle while placed. Playing a tower on an occupied socket asks to **Replace** — the old tower is destroyed. |
-| Active | muted dark red | one-shot effect, then to the discard pile |
-| Passive | muted dark brown | lasts through the next wave, then to the discard pile |
+| Tower | muted dark blue | seats in an open socket; fires automatically; leaves the deck. Playing a tower on an occupied socket asks to **Replace** — the old tower is destroyed. |
+| Active | muted dark red | permanent: a repeating effect with its own cooldown during waves, shown as an icon at the top right that fills like a tower. Every extra copy divides the cooldown (2 copies fire twice as often). Leaves the deck. |
+| Passive | muted dark brown | permanent run-wide modifier. Leaves the deck. |
+
+Every played card leaves the deck for good, so the deck shrinks as your build grows; unplayed
+cards are discarded and come back when the draw pile is reshuffled.
 
 **Sacrifice and purge.** Right-click cards to mark them (red outline).
 
@@ -71,18 +75,21 @@ Pages serves the `palimpsest` branch **directly from the repository root**: the 
   rarities). Unlimited per turn.
 * One marked → **Purge** removes it from your deck. Once per turn.
 
-The deck only changes through sacrifice and purge. You start with 10 cards: the Memory Needle tower
-and nine placeholder commons.
+New cards only enter the deck through sacrifice. You start with 10 cards: the Memory Needle tower,
+two Quickened Pulse, two Sharpened Grief, Far Remembrance, Sturdy Vessel, two Stray Memory and
+Mend the Vessel.
 
 **Controls**
 
 | Input | Action |
 |---|---|
-| Drag a card | towers/Quicken: onto a socket; other cards: up out of the hand to play |
-| Click a card | play it (towers and Quicken then wait for a socket click) |
+| Drag a card | towers: onto a socket; other cards: up out of the hand to play |
+| Click a card | play it (towers then wait for a socket click) |
 | Right-click a card | mark/unmark for sacrifice or purge |
 | Hover a card | lift it and read its tooltip; the hand tucks away when the pointer leaves it |
-| Hover a placed tower | its attack range is drawn around the Base, with a tooltip |
+| Hover a placed tower | its attack range is drawn around the Base, with a tooltip of its current Damage, DPS, Attack speed, Range, Target type and Projectiles (all modifiers applied) |
+| Tab | show/hide the modifier panel during a wave (always shown during a turn) |
+| 1 · 2 · 3 (or the 1×/2×/3× buttons) | time speed |
 | Mouse wheel / Z | zoom toward the cursor / reset zoom (the camera never zooms by itself) |
 | E | End Turn |
 | Esc | cancel targeting/replace, clear marks; in combat, pause |
@@ -92,18 +99,26 @@ and nine placeholder commons.
 
 | Tower | Behaviour |
 |---|---|
-| Memory Needle | the all-rounder: 0.9 s, 6 dmg, range 14, homing needle |
+| Memory Needle | the all-rounder: 0.9 s, 6 dmg, range 14, homing needle (1 projectile) |
 | Last Light | 2.6 s, 30 dmg, range 22, instant lance |
-| Kindred Thread | 2.0 s, 9/7/5 chained through up to 3 foes, range 13 |
+| Kindred Thread | 2.0 s, 9 → 7 → 5 chained through up to 3 foes, range 13 |
 | Mercy Bell | 2.8 s, 10 dmg to every foe within 8.5 of the Base |
 
-| Active / passive (placeholders) | Effect |
+| Passive (permanent) | Effect |
 |---|---|
-| Mend the Vessel (active) | restore 10 Integrity |
-| Scatter Ash (active) | when the next wave begins, 12 damage to every foe within 10 |
-| Quicken (active, targets a tower) | fill that tower's charge |
-| Polished Memory (passive) | next wave: +15% tower damage |
-| Heavy Air (passive) | next wave: foes 20% slower |
+| Quickened Pulse | +5% attack speed for all towers |
+| Sharpened Grief | +5% damage for all towers |
+| Far Remembrance | +5% range for all towers |
+| Sturdy Vessel | +5% max Integrity (and restores the added amount) |
+
+| Active (permanent, repeats during waves) | Effect |
+|---|---|
+| Stray Memory | every 4 s: strike a random foe for 50% of the average DPS of your placed towers |
+| Mend the Vessel | every 8 s: restore 5 Integrity |
+
+Modifiers add up (ten Quickened Pulses = +50% attack speed). DPS is damage per second against one
+foe per hit (a chain counts every hop). Actives hold when they have nothing to do (no foes, no
+towers, or full Integrity).
 
 | Foe (game piece) | HP | Speed | Contact |
 |---|---:|---:|---:|
@@ -128,8 +143,8 @@ src/
     simulation.ts       fixed 1/60 s combat step (see below), soft collision, slot locks, wave modifiers
     clock.ts, rng.ts, types.ts
   view/
-    scene.ts            renderer, square ortho camera (player zoom only), lights, composer chain
-    board.ts            wooden table, inked arena, props, reliquary Base, sockets, lock covers, range ring
+    scene.ts            renderer, square ortho camera (player zoom only), candle key light, composer chain
+    board.ts            wooden table, inked arena, candle + book, fog veil, reliquary Base, sockets, range ring
     hand.ts             the physical hand in its own overlay pass, piles, sacrifice offers
     cards.ts            socketed tower cards with per-card charge overlays
     cardAssets.ts       shared card geometry, faces and type-coloured edges
@@ -137,24 +152,29 @@ src/
     art.ts              procedural card faces (type-coloured, print-finished), table and piece textures
   input/cardInteraction.ts   hand-first picking, drag/click play, right-click marks, wheel zoom
   fx/effects.ts, fx/audio.ts pooled cosmetic effects (dimmed while frozen); synthesized audio
-  ui/hud.ts, styles.css      top bar, energy, piles, End Turn, action bar, tooltip, overlays
+  game/stats.ts              effective tower numbers after modifiers (used by the sim and every tooltip)
+  ui/hud.ts, styles.css      top bar, time speed, active icons, modifier panel, energy, piles, End Turn,
+                             action bar, tooltip, overlays
   dev/devApi.ts              test API (dev builds or `?dev`)
 ```
 
 **Render chain.** World `RenderPass` (half-float, MSAA on High) → **hand overlay `RenderPass`**
 (separate scene/camera, depth cleared — world objects can never draw over your cards) →
-`UnrealBloomPass` (High) → `OutputPass` (tone map + sRGB once) → stylize pass (soft posterize,
-ordered dither, grain, vignette, slight chromatic offset).
+`UnrealBloomPass` (High) → `OutputPass` (tone map + sRGB once) → grade pass (slight desaturation,
+warm shadows, deep vignette). The candle is the one shadow-casting light; a fog veil just above the
+pieces darkens the table toward its edges, so foes emerge from the dark.
 
-**Deterministic step order** (one tick = 1/60 s): 0 queued wave-start effects (Scatter Ash) →
-1 spawns → 2 movement, 2b soft separation (grid hash, stable ID order, capped pushes, never shoves
-a foe into the Base) → 3 towers charge/fire in stable creation order → 4 projectiles → 5 dead
+**Deterministic step order** (one tick = 1/60 s): 1 spawns → 2 movement, 2b soft separation (grid hash, stable ID order, capped pushes, never shoves
+a foe into the Base) → 3 towers charge/fire in stable creation order → 3b active cards in first-played order →
+4 projectiles → 5 dead
 cleanup → 6 contact damage → 7 defeat → 8 wave clock (boundary → turn; wave 8 → clearing → victory).
 Turns freeze the simulation completely; card motion, hand animation and dust use presentation time.
+Time speed (2×, 3×) runs proportionally more fixed steps per frame; the simulation itself is
+unchanged.
 
 ## Testing
 
-* `npm test` — 50 Vitest checks across `tests/simulation.test.ts`, `tests/deck.test.ts`,
+* `npm test` — 57 Vitest checks across `tests/simulation.test.ts`, `tests/deck.test.ts`,
   `tests/phases.test.ts` and the balance report.
 * `npm run smoke` — Playwright drives the real canvas and DOM through the turn loop, combat, pause,
   boundaries, replace, sacrifice/purge, suspension, defeat/victory/restart, resolutions, Low

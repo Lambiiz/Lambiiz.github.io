@@ -11,7 +11,8 @@ import * as art from '../view/art';
 
 const hdr = (hex: number, k: number) => new THREE.Color(hex).multiplyScalar(k);
 
-const ASH_COLOR = hdr(0xd88a5a, 2.0);
+const STRAY_COLOR = hdr(0xb8f4ff, 2.4);
+const MEND_COLOR = hdr(0x9ad78c, 1.8);
 
 export const WEAPON_COLORS: Record<WeaponId, THREE.Color> = {
   needle: hdr(0x69dad0, 3.0),
@@ -557,6 +558,24 @@ export class Effects {
     r.build(this.viewDir);
   }
 
+  /** Effective Mercy Bell reach (after range modifiers); set by the app each frame. */
+  bellRadius = WEAPONS.bell.pulseRadius ?? WEAPONS.bell.range;
+
+  private ringAt(p: THREE.Vector3, r0: number, r1: number, life: number, color: THREE.Color, t: number): void {
+    const r = this.ring();
+    if (!r) return;
+    r.active = true;
+    r.born = t;
+    r.life = life;
+    r.r0 = r0;
+    r.r1 = r1;
+    r.presentation = false;
+    r.alpha = 1;
+    r.mat.uniforms.uColor.value.copy(color);
+    r.mat.uniforms.uWidth.value = 0.05;
+    r.mesh.position.copy(p);
+  }
+
   onSimEvent(ev: SimEvent, cardPos: (weaponId: number) => THREE.Vector3 | null): void {
     const t = ev.t;
     switch (ev.type) {
@@ -571,7 +590,7 @@ export class Effects {
       }
       case 'damaged': {
         const p = new THREE.Vector3(ev.x, 0.9, ev.z);
-        const c = ev.source === 'ash' ? ASH_COLOR : WEAPON_COLORS[ev.source];
+        const c = ev.source === 'stray' ? STRAY_COLOR : ev.source === 'mend' ? MEND_COLOR : WEAPON_COLORS[ev.source];
         this.flash(p, c, ev.source === 'light' ? 1.3 : 0.7, ev.source === 'light' ? 0.12 : 0.08, t);
         this.burst(p, c, ev.source === 'needle' ? 5 : 7, 2.2, t, 0.08, 0.35, 3);
         break;
@@ -590,25 +609,17 @@ export class Effects {
         this.flash(p, hdr(0xe28174, 2.0), 1.6, 0.14, t);
         break;
       }
-      case 'blast': {
-        const r = this.ring();
-        if (r) {
-          r.active = true;
-          r.born = t;
-          r.life = 0.6;
-          r.r0 = 1.5;
-          r.r1 = ev.radius;
-          r.presentation = false;
-          r.alpha = 1;
-          r.mat.uniforms.uColor.value.copy(ASH_COLOR);
-          r.mat.uniforms.uWidth.value = 0.05;
-          r.mesh.position.set(0, 0.08, 0);
-        }
-        for (let i = 0; i < 40; i++) {
-          const a = this.rng.next() * Math.PI * 2;
-          const rr = this.rng.range(2, ev.radius);
-          this.particles.emit(new THREE.Vector3(Math.cos(a) * rr, 0.3, Math.sin(a) * rr), new THREE.Vector3(0, this.rng.range(0.4, 1.4), 0), hdr(0x9a8a7a, 1.1), 0.16, 0.9, t, -0.2);
-        }
+      case 'activeFired': {
+        if (ev.defId === 'stray') {
+          // a memory falls from above onto the struck foe
+          const p = new THREE.Vector3(ev.x, 0.9, ev.z);
+          for (let i = 0; i < 18; i++) {
+            const h = 1 + i * 0.55;
+            this.particles.emit(new THREE.Vector3(ev.x + h * 0.12, h, ev.z - h * 0.06), new THREE.Vector3(-0.3, -9, 0.15), STRAY_COLOR, 0.13, 0.12 + i * 0.012, t, 0);
+          }
+          this.flash(p, STRAY_COLOR, 1.2, 0.12, t);
+          this.ringAt(p.setY(0.08), 0.3, 1.8, 0.35, STRAY_COLOR, t);
+        } else this.ringAt(new THREE.Vector3(0, 0.08, 0), 3, 7.5, 0.7, MEND_COLOR, t);
         break;
       }
       case 'projectileExpired': {
@@ -706,14 +717,14 @@ export class Effects {
       c.mat.uniforms.uWidth.value = 0.08;
       c.mesh.position.set(EMITTER_POS.x, LID_TOP + 0.08, EMITTER_POS.z);
     }
-    // ... and the thin pulse ring sweeps outward from the Base walls to the full 6.8 radius
+    // ... and the thin pulse ring sweeps outward from the Base walls to the full reach
     const a = this.ring();
     if (a) {
       a.active = true;
       a.born = t;
       a.life = 0.42;
       a.r0 = 3.6;
-      a.r1 = WEAPONS.bell.pulseRadius ?? 8.5;
+      a.r1 = this.bellRadius;
       a.presentation = false;
       a.alpha = 1;
       a.mat.uniforms.uColor.value.copy(WEAPON_COLORS.bell);
@@ -726,7 +737,7 @@ export class Effects {
       b.born = t + 0.06;
       b.life = 0.65;
       b.r0 = 3.4;
-      b.r1 = (WEAPONS.bell.pulseRadius ?? 8.5) * 0.8;
+      b.r1 = this.bellRadius * 0.8;
       b.presentation = false;
       b.alpha = 0.5;
       b.mat.uniforms.uColor.value.copy(hdr(0xf2d79a, 1.6));

@@ -1,6 +1,6 @@
 // All tunable gameplay data lives here. Values are starting hypotheses (balance is not tuned yet);
 // see docs/TUNING.md.
-import type { CardDef, CardId, CardType, EnemyDef, EnemyKind, SpellDef, SpellId, TrialDef, WeaponDef, WeaponId } from './types';
+import type { ActiveDef, ActiveId, CardDef, CardId, CardType, EnemyDef, EnemyKind, PassiveId, SpellDef, SpellId, StatMods, TrialDef, WeaponDef, WeaponId } from './types';
 
 export const FIXED_DT = 1 / 60;
 export const MAX_FRAME_DELTA = 0.1;
@@ -44,8 +44,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     range: 14,
     projectileSpeed: 24,
     projectileLife: 1.4,
-    summary: 'Steady homing needle. Medium range, single target.',
-    flavor: 'It remembers where the crack began.',
+    summary: 'Fires a homing needle at the nearest foe. Medium range.',
   },
   light: {
     id: 'light',
@@ -57,8 +56,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     interval: 2.6,
     damage: 30,
     range: 22,
-    summary: 'Heavy instant lance. Long range, single target.',
-    flavor: 'The final sunrise, held in two lenses.',
+    summary: 'A heavy instant lance at the nearest foe. Long range, slow.',
   },
   thread: {
     id: 'thread',
@@ -72,8 +70,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     range: 13,
     chainDamage: [9, 7, 5],
     chainHopRange: 2.6,
-    summary: 'Chains through up to 3 nearby foes.',
-    flavor: 'What was bound in life stays bound.',
+    summary: 'Strikes the nearest foe, then jumps to up to 2 more nearby.',
   },
   bell: {
     id: 'bell',
@@ -86,76 +83,57 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     damage: 10,
     range: 8.5,
     pulseRadius: 8.5,
-    summary: 'Rings every foe close to the Base. Short range.',
-    flavor: 'Rung once for every name forgotten.',
+    summary: 'Hits every foe near the vessel at once. Short range.',
   },
 };
 
-/** Placeholder active and passive cards. Passive effects last through the next wave. */
+/**
+ * Passive cards are permanent run-wide modifiers. Active cards install a repeating effect with its
+ * own cooldown; every extra copy divides that cooldown. Both leave the deck once played.
+ * Text markup: {+...} renders as a bonus (green), {-...} as a drawback (red).
+ */
 export const SPELLS: Record<SpellId, SpellDef> = {
+  swift: { id: 'swift', name: 'Quickened Pulse', type: 'passive', cost: COST.passive, rarity: 'common', stat: 'attackSpeed', amount: 0.05, summary: '{+5% attack speed} for all towers.' },
+  keen: { id: 'keen', name: 'Sharpened Grief', type: 'passive', cost: COST.passive, rarity: 'common', stat: 'damage', amount: 0.05, summary: '{+5% damage} for all towers.' },
+  farsight: { id: 'farsight', name: 'Far Remembrance', type: 'passive', cost: COST.passive, rarity: 'common', stat: 'range', amount: 0.05, summary: '{+5% range} for all towers.' },
+  sturdy: { id: 'sturdy', name: 'Sturdy Vessel', type: 'passive', cost: COST.passive, rarity: 'common', stat: 'maxIntegrity', amount: 0.05, summary: '{+5% max Integrity}. Also restores the added amount.' },
+  stray: {
+    id: 'stray',
+    name: 'Stray Memory',
+    type: 'active',
+    cost: COST.active,
+    rarity: 'common',
+    cooldown: 4,
+    effect: { kind: 'strike', dpsRatio: 0.5 },
+    summary: 'During waves, every 4 s: strike a random foe for {+50% of your average tower DPS}.',
+  },
   mend: {
     id: 'mend',
     name: 'Mend the Vessel',
     type: 'active',
     cost: COST.active,
     rarity: 'common',
-    effect: { kind: 'heal', amount: 10 },
-    target: 'none',
-    summary: 'Restore 10 Integrity.',
-    flavor: 'Gold in the seams, stronger than before.',
-  },
-  ash: {
-    id: 'ash',
-    name: 'Scatter Ash',
-    type: 'active',
-    cost: COST.active,
-    rarity: 'common',
-    effect: { kind: 'blast', damage: 12, radius: 10 },
-    target: 'none',
-    summary: 'When the next wave begins, deal 12 to every foe within 10 of the Base.',
-    flavor: 'What burns once remembers the fire.',
-  },
-  quicken: {
-    id: 'quicken',
-    name: 'Quicken',
-    type: 'active',
-    cost: COST.active,
-    rarity: 'common',
-    effect: { kind: 'charge' },
-    target: 'tower',
-    summary: 'Fill one placed tower to full charge.',
-    flavor: 'The sand forgets to fall.',
-  },
-  polish: {
-    id: 'polish',
-    name: 'Polished Memory',
-    type: 'passive',
-    cost: COST.passive,
-    rarity: 'common',
-    effect: { kind: 'damageBonus', amount: 0.15 },
-    target: 'none',
-    summary: 'Next wave: all towers deal +15% damage.',
-    flavor: 'Rubbed bright by repetition.',
-  },
-  heavy: {
-    id: 'heavy',
-    name: 'Heavy Air',
-    type: 'passive',
-    cost: COST.passive,
-    rarity: 'common',
-    effect: { kind: 'slow', factor: 0.8 },
-    target: 'none',
-    summary: 'Next wave: foes move 20% slower.',
-    flavor: 'Even the dead tire of walking.',
+    cooldown: 8,
+    effect: { kind: 'heal', amount: 5 },
+    summary: 'During waves, every 8 s: restore {+5 Integrity}.',
   },
 };
 
+/** Extra copies of an active card divide its cooldown: n copies fire n times as often. */
+export function activeCooldown(id: ActiveId, count: number): number {
+  return (SPELLS[id] as ActiveDef).cooldown / Math.max(1, count);
+}
+
 export const WEAPON_IDS: WeaponId[] = ['needle', 'light', 'thread', 'bell'];
-export const SPELL_IDS: SpellId[] = ['mend', 'ash', 'quicken', 'polish', 'heavy'];
+export const PASSIVE_IDS: PassiveId[] = ['swift', 'keen', 'farsight', 'sturdy'];
+export const ACTIVE_IDS: ActiveId[] = ['stray', 'mend'];
+export const SPELL_IDS: SpellId[] = [...PASSIVE_IDS, ...ACTIVE_IDS];
 export const CARD_IDS: CardId[] = [...WEAPON_IDS, ...SPELL_IDS];
 
-/** 10 cards: one tower (always in the opening hand) and nine placeholder commons. */
-export const STARTING_DECK: CardId[] = ['needle', 'mend', 'mend', 'ash', 'ash', 'quicken', 'quicken', 'polish', 'polish', 'heavy'];
+/** 10 cards: one tower (always in the opening hand) and nine commons. */
+export const STARTING_DECK: CardId[] = ['needle', 'swift', 'swift', 'keen', 'keen', 'farsight', 'sturdy', 'stray', 'stray', 'mend'];
+
+export const NO_MODS: StatMods = { attackSpeed: 0, damage: 0, range: 0, maxIntegrity: 0 };
 
 export function cardDef(id: CardId): CardDef {
   return (WEAPONS as Record<string, CardDef>)[id] ?? (SPELLS as Record<string, CardDef>)[id];

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BASE, ENEMIES, FIXED_DT, SLOTS_UNLOCKED_AT_START, TRIALS, WEAPONS } from '../src/game/content';
+import { activeCooldown, BASE, ENEMIES, FIXED_DT, SLOTS_UNLOCKED_AT_START, TRIALS, WEAPONS } from '../src/game/content';
+import { averageDps, towerStats } from '../src/game/stats';
 import { FixedStepClock } from '../src/game/clock';
 import { chargeFraction, footprintGap, Simulation, touchesBase } from '../src/game/simulation';
 import type { SimEvent, TrialDef } from '../src/game/types';
@@ -254,9 +255,10 @@ describe('weapons', () => {
     expect([inA.hp, inB.hp, out.hp]).toEqual([100 - d, 100 - d, 100]);
   });
 
-  it('passive damage bonus multiplies damage additively', () => {
+  it('damage modifiers add up and multiply damage', () => {
     const sim = quietSim();
-    sim.damageBonus = 0.3;
+    sim.addStat('damage', 0.15);
+    sim.addStat('damage', 0.15);
     sim.installWeapon(0, 'light');
     const e = dummy(sim, 0, 6, 100);
     runTicks(sim, ticksOf(LIGHT.interval));
@@ -401,19 +403,89 @@ describe('swarm collision, locks and card effects', () => {
     expect(sim.locked[0]).toBe(false);
   });
 
-  it('queued blasts resolve on the first tick of the next wave; slow factor scales speed', () => {
-    const sim = quietSim();
-    const near = dummy(sim, 0, 6, 100);
-    const far = dummy(sim, 0, 14, 100);
-    sim.pendingBlasts.push({ damage: 12, radius: 10 });
-    const ev = runTicks(sim, 1);
-    expect(ev.some((e) => e.type === 'blast')).toBe(true);
-    expect([near.hp, far.hp]).toEqual([88, 100]);
-    expect(sim.pendingBlasts.length).toBe(0);
-    const slow = new Simulation({ seed: 2, trials: LONG_TRIALS, spawning: false });
-    slow.speedFactor = 0.5;
-    const e = slow.spawnEnemy('echo', 20, 0, 1);
-    runTicks(slow, 60);
-    expect(20 - e.x).toBeCloseTo(ENEMIES.echo.speed * 0.5, 5);
+  it('attack speed modifiers shorten the interval', () => {
+    const base = quietSim();
+    base.installWeapon(0, 'needle');
+    dummy(base, 0, 6);
+    const fast = quietSim();
+    fast.installWeapon(0, 'needle');
+    fast.addStat('attackSpeed', 0.5);
+    dummy(fast, 0, 6);
+    const n = ticksOf(WEAPONS.needle.interval * 6);
+    expect(fired(runTicks(base, n)).length).toBe(6);
+    expect(fired(runTicks(fast, n)).length).toBe(9);
   });
+
+  it('range modifiers extend reach from the Base centre', () => {
+    const sim = quietSim();
+    sim.installWeapon(0, 'light');
+    const r = WEAPONS.light.range;
+    dummy(sim, 0, r + 1);
+    expect(fired(runTicks(sim, ticksOf(LIGHT.interval) + 2)).length).toBe(0);
+    sim.addStat('range', 0.1); // reach r * 1.1 > r + 1
+    expect(fired(runTicks(sim, 2)).length).toBe(1);
+  });
+
+  it('max Integrity raises the cap and restores the added amount', () => {
+    const sim = quietSim();
+    sim.baseHp = 80;
+    sim.addStat('maxIntegrity', 0.1);
+    expect(sim.maxHp).toBeCloseTo(BASE.maxHealth * 1.1);
+    expect(sim.baseHp).toBeCloseTo(90);
+  });
+
+  it('Stray Memory strikes a random foe for half the average tower DPS; copies divide the cooldown', () => {
+    const sim = quietSim();
+    sim.installWeapon(0, 'needle');
+    sim.installWeapon(1, 'light');
+    sim.addActive('stray');
+    const far = dummy(sim, 0, 40, 1000); // out of every tower's range
+    const avg = (averageDps(['needle', 'light'], sim.mods));
+    const cd = activeCooldown('stray', 1);
+    const ev = runTicks(sim, ticksOf(cd));
+    const strikes = ev.filter((e) => e.type === 'activeFired');
+    expect(strikes.length).toBe(1);
+    expect(far.hp).toBeCloseTo(1000 - avg * 0.5);
+    sim.addActive('stray');
+    expect(sim.actives[0].count).toBe(2);
+    const ev2 = runTicks(sim, ticksOf(cd));
+    expect(ev2.filter((e) => e.type === 'activeFired').length).toBe(2);
+  });
+
+  it('actives hold when they have nothing to do', () => {
+    const sim = quietSim();
+    sim.addActive('stray');
+    sim.addActive('mend');
+    dummy(sim, 0, 40, 1000); // a foe exists but no tower: zero DPS
+    const ev = runTicks(sim, ticksOf(10));
+    expect(ev.filter((e) => e.type === 'activeFired').length).toBe(0); // Integrity full, no DPS
+    sim.baseHp = 90;
+    const ev2 = runTicks(sim, 1);
+    expect(ev2.filter((e) => e.type === 'activeFired').length).toBe(1);
+    expect(sim.baseHp).toBe(95);
+  });
+
+  it('tower stats reflect modifiers (damage, DPS, attack speed, range)', () => {
+    const mods = { attackSpeed: 0.1, damage: 0.1, range: 0.05, maxIntegrity: 0 };
+    const s = towerStats('needle', mods);
+    expect(s.damage[0]).toBeCloseTo(WEAPONS.needle.damage * 1.1);
+    expect(s.attacksPerSecond).toBeCloseTo(1.1 / WEAPONS.needle.interval);
+    expect(s.dps).toBeCloseTo((WEAPONS.needle.damage * 1.1 * 1.1) / WEAPONS.needle.interval);
+    expect(s.range).toBeCloseTo(WEAPONS.needle.range * 1.05);
+    expect(s.projectiles).toBe(1);
+    expect(towerStats('light', mods).projectiles).toBeNull();
+  });
+
+  it('time speed runs proportionally more fixed steps per frame', () => {
+    const run = (speed: number) => {
+      const sim = quietSim();
+      const clock = new FixedStepClock();
+      for (let i = 0; i < 60; i++) clock.advance(1 / 60, true, () => sim.step(), speed);
+      return sim.tick;
+    };
+    expect(run(1)).toBe(60);
+    expect(run(2)).toBe(120);
+    expect(run(3)).toBe(180);
+  });
+
 });

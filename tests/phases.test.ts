@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardDef, isWeaponId, SLOTS_UNLOCKED_AT_START, STARTING_DECK, TRIALS, TURN, WEAPONS } from '../src/game/content';
+import { cardDef, isWeaponId, SLOTS_UNLOCKED_AT_START, STARTING_DECK, TRIALS, TURN } from '../src/game/content';
 import { FixedStepClock } from '../src/game/clock';
 import { PhaseController } from '../src/game/phases';
 import type { CardId, TrialDef } from '../src/game/types';
@@ -92,29 +92,27 @@ describe('turn loop', () => {
     expect(c.turn!.energy).toBe(0);
   });
 
-  it('actives and passives apply their effect and go to the discard pile', () => {
-    const deck: CardId[] = ['needle', 'mend', 'polish', 'heavy', 'ash', 'quicken'];
+  it('passives and actives apply permanently and leave the deck', () => {
+    const deck: CardId[] = ['needle', 'swift', 'keen', 'sturdy', 'stray'];
     const c = newRun(6, { deck });
-    c.sim.baseHp = 50;
+    expect(c.deck.hand.length).toBe(4);
     const hand = handIds(c);
-    for (const id of hand) {
-      if (id === 'needle') c.playCard(uidOf(c, id), OPEN_A);
+    for (const id of hand) expect(c.playCard(uidOf(c, id), id === 'needle' ? OPEN_A : undefined)).toBe('played');
+    if (hand.includes('swift')) expect(c.sim.mods.attackSpeed).toBeCloseTo(0.05);
+    if (hand.includes('keen')) expect(c.sim.mods.damage).toBeCloseTo(0.05);
+    if (hand.includes('sturdy')) {
+      expect(c.sim.maxHp).toBeCloseTo(105);
+      expect(c.sim.baseHp).toBeCloseTo(105); // the added max Integrity is restored
     }
-    for (const id of handIds(c)) {
-      const uid = uidOf(c, id);
-      if (id === 'quicken') {
-        if (c.sim.slots[OPEN_A]) {
-          expect(c.playCard(uid, OPEN_B)).toBe('invalid'); // empty socket is not a tower target
-          expect(c.playCard(uid, OPEN_A)).toBe('played');
-          expect(c.sim.slots[OPEN_A]!.elapsed).toBe(WEAPONS.needle.interval);
-        }
-      } else expect(c.playCard(uid)).toBe('played');
-    }
-    if (hand.includes('mend')) expect(c.sim.baseHp).toBe(60);
-    if (hand.includes('polish')) expect(c.sim.damageBonus).toBeCloseTo(0.15);
-    if (hand.includes('heavy')) expect(c.sim.speedFactor).toBeCloseTo(0.8);
-    if (hand.includes('ash')) expect(c.sim.pendingBlasts.length).toBe(1);
-    expect(c.deck.discard.length).toBeGreaterThan(0);
+    if (hand.includes('stray')) expect(c.sim.actives).toEqual([{ defId: 'stray', count: 1, elapsed: 0, uses: 0 }]);
+    // played cards are gone from the deck for good
+    expect(c.deck.size).toBe(deck.length - hand.length);
+    expect(c.deck.discard.length).toBe(0);
+  });
+
+  it('spells never need a target', () => {
+    const c = newRun(6, { deck: ['needle', 'mend', 'farsight', 'keen'] });
+    for (const x of c.deck.hand) expect(c.needsTarget(x.uid)).toBe(isWeaponId(x.defId));
   });
 
   it('end turn discards the hand, combat freezes at the boundary, and the next turn draws 4', () => {
@@ -135,15 +133,15 @@ describe('turn loop', () => {
     expect(c.sim.trialIndex).toBe(1);
   });
 
-  it('passives last exactly one wave', () => {
-    const c = newRun(9, { deck: ['needle', 'polish', 'heavy', 'mend'] });
-    c.playCard(uidOf(c, 'polish'));
-    c.playCard(uidOf(c, 'heavy'));
+  it('modifiers and actives persist across waves', () => {
+    const c = newRun(9, { deck: ['needle', 'keen', 'mend', 'swift'] });
+    c.playCard(uidOf(c, 'needle'), OPEN_A);
+    c.playCard(uidOf(c, 'keen'));
+    c.playCard(uidOf(c, 'mend'));
     c.endTurn();
-    expect(c.sim.damageBonus).toBeCloseTo(0.15);
     runUntilFrozen(c);
-    expect(c.sim.damageBonus).toBe(0);
-    expect(c.sim.speedFactor).toBe(1);
+    expect(c.sim.mods.damage).toBeCloseTo(0.05);
+    expect(c.sim.actives.length).toBe(1);
   });
 
   it('a turn freezes enemies, projectiles, spawn progress, charge and damage', () => {
@@ -161,7 +159,7 @@ describe('turn loop', () => {
 
 describe('sacrifice and purge', () => {
   it('two marked cards are sacrificed for a 1-of-3 choice that goes to the hand; unlimited per turn', () => {
-    const c = newRun(10, { deck: ['needle', 'mend', 'ash', 'polish', 'heavy', 'quicken', 'mend', 'ash'] });
+    const c = newRun(10, { deck: ['needle', 'mend', 'stray', 'keen', 'swift', 'farsight', 'mend', 'stray'] });
     const sizeBefore = c.deck.size;
     const [a, b] = c.deck.hand.filter((x) => !isWeaponId(x.defId)).map((x) => x.uid);
     c.toggleMark(a);

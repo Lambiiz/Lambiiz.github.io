@@ -29,11 +29,7 @@ function placeTowers(c: PhaseController) {
 function playSpells(c: PhaseController) {
   for (const card of [...c.deck.hand] as CardInstance[]) {
     if (isWeaponId(card.defId) || !c.canAfford(card.uid)) continue;
-    if (card.defId === 'mend' && c.sim.baseHp > 92) continue;
-    if (c.needsTarget(card.uid)) {
-      const t = SLOTS_UNLOCKED_AT_START.find((s) => c.sim.slots[s]);
-      if (t !== undefined) c.playCard(card.uid, t);
-    } else c.playCard(card.uid);
+    c.playCard(card.uid); // passives and actives are permanent, so play them all
   }
 }
 

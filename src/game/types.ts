@@ -1,8 +1,13 @@
 // Core gameplay types. Simulation code only depends on this file, content.ts and rng.ts.
 
 export type WeaponId = 'needle' | 'light' | 'thread' | 'bell';
-/** Placeholder active/passive cards (real card design comes later). */
-export type SpellId = 'mend' | 'ash' | 'quicken' | 'polish' | 'heavy';
+/** Passive cards (permanent stat modifiers) and active cards (repeating effects with a cooldown). */
+export type PassiveId = 'swift' | 'keen' | 'farsight' | 'sturdy';
+export type ActiveId = 'stray' | 'mend';
+export type SpellId = PassiveId | ActiveId;
+/** Run-wide stat modifiers, as additive fractions (0.05 = +5%). */
+export type StatId = 'attackSpeed' | 'damage' | 'range' | 'maxIntegrity';
+export type StatMods = Record<StatId, number>;
 export type CardId = WeaponId | SpellId;
 export type CardType = 'tower' | 'active' | 'passive';
 /** Only 'common' exists for now; higher rarities cost more energy later. */
@@ -18,7 +23,6 @@ interface CardBase {
   cost: number; // energy
   rarity: Rarity;
   summary: string;
-  flavor: string;
 }
 
 export interface WeaponDef extends CardBase {
@@ -35,21 +39,34 @@ export interface WeaponDef extends CardBase {
   projectileLife?: number;
 }
 
-export type SpellEffect =
-  | { kind: 'heal'; amount: number }
-  | { kind: 'blast'; damage: number; radius: number } // resolves at the start of the next wave
-  | { kind: 'charge' } // fills one placed tower's charge (needs a tower target)
-  | { kind: 'damageBonus'; amount: number } // passive: additive damage bonus for the next wave
-  | { kind: 'slow'; factor: number }; // passive: enemy speed multiplier for the next wave
-
-export interface SpellDef extends CardBase {
-  id: SpellId;
-  type: 'active' | 'passive';
-  effect: SpellEffect;
-  target: 'none' | 'tower';
+export interface PassiveDef extends CardBase {
+  id: PassiveId;
+  type: 'passive';
+  stat: StatId;
+  amount: number; // additive fraction per copy
 }
 
+export type ActiveEffect =
+  | { kind: 'strike'; dpsRatio: number } // hit a random foe for a fraction of the average tower DPS
+  | { kind: 'heal'; amount: number };
+
+export interface ActiveDef extends CardBase {
+  id: ActiveId;
+  type: 'active';
+  cooldown: number; // seconds for one copy; n copies -> cooldown / n
+  effect: ActiveEffect;
+}
+
+export type SpellDef = PassiveDef | ActiveDef;
 export type CardDef = WeaponDef | SpellDef;
+
+/** A played active card: all copies share one cooldown that shortens with each copy. */
+export interface ActiveInstance {
+  defId: ActiveId;
+  count: number;
+  elapsed: number; // seconds charged toward the current cooldown
+  uses: number;
+}
 
 /** A physical card in the run's deck. `uid` distinguishes duplicates. */
 export interface CardInstance {
@@ -133,12 +150,12 @@ export type SimEvent =
       targets: number[];
       points: Vec2[]; // impact points (chain: each hop; lance: target; pulse: empty)
     }
-  | { type: 'damaged'; t: number; enemyId: number; amount: number; hp: number; source: WeaponId | 'ash'; x: number; z: number }
+  | { type: 'damaged'; t: number; enemyId: number; amount: number; hp: number; source: WeaponId | ActiveId; x: number; z: number }
   | { type: 'died'; t: number; enemyId: number; kind: EnemyKind; x: number; z: number }
   | { type: 'arrived'; t: number; enemyId: number; kind: EnemyKind; damage: number; x: number; z: number }
   | { type: 'projectileExpired'; t: number; projectileId: number; x: number; z: number }
   | { type: 'baseDamaged'; t: number; amount: number; hp: number }
-  | { type: 'blast'; t: number; radius: number; hits: number }
+  | { type: 'activeFired'; t: number; defId: ActiveId; enemyId: number | null; amount: number; x: number; z: number }
   | { type: 'healed'; t: number; amount: number; hp: number };
 
 export type StepOutcome = 'continue' | 'boundary' | 'clearingStarted' | 'defeat' | 'victory';
