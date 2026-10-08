@@ -46,6 +46,9 @@ async function cardAt(uid) {
   await raise();
   return page.evaluate((u) => __PALIMPSEST__.handCardScreen(u), uid);
 }
+async function settleTo(slot) {
+  await page.waitForFunction((k) => !!__PALIMPSEST__.snapshot().slots[k], slot, { timeout: 5000, polling: 200 }).catch(() => {});
+}
 async function drag(from, to) {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
@@ -65,7 +68,8 @@ for (;;) {
     const free = open();
     if (!free.length || s.turn.energy < 3) break;
     await drag(await cardAt(c.uid), await page.evaluate((k) => __PALIMPSEST__.socketScreen(k), free[0]));
-    actions.push(`placed ${c.defId} in socket ${free[0] + 1}`);
+    await settleTo(free[0]);
+    actions.push(`${(await snap()).slots[free[0]] ? 'placed' : 'FAILED to place'} ${c.defId} in socket ${free[0] + 1}`);
   }
   // 2. hunting a second tower: sacrifice two spare spells while a socket is still open
   s = await snap();
@@ -89,7 +93,8 @@ for (;;) {
     const free = open();
     if (got && free.length && s.turn.energy >= 3) {
       await drag(await cardAt(got.uid), await page.evaluate((k) => __PALIMPSEST__.socketScreen(k), free[0]));
-      actions.push(`placed ${got.defId} in socket ${free[0] + 1}`);
+      await settleTo(free[0]);
+      actions.push(`${(await snap()).slots[free[0]] ? 'placed' : 'FAILED to place'} ${got.defId} in socket ${free[0] + 1}`);
     }
   }
   // 3. spend remaining energy on spells (click; Quicken then click a tower)

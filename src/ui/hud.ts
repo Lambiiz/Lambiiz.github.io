@@ -159,7 +159,11 @@ export class Hud {
       this.el[id].addEventListener('click', h);
       this.offListeners.push(() => this.el[id].removeEventListener('click', h));
     };
-    on('btn-start', () => cb.start());
+    on('btn-start', () => {
+      // hide at once: the next HUD frame may be a while away, and the overlay would swallow pointer moves
+      this.el['title-overlay'].classList.add('hidden');
+      cb.start();
+    });
     on('btn-pause', () => (this.lastPhase === 'PAUSED' ? cb.resume() : cb.pause()));
     on('btn-resume', () => cb.resume());
     on('btn-mute', () => cb.toggleMute());
