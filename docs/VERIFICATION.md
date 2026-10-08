@@ -79,7 +79,24 @@ Run 2026-10-08T18:37:07.614Z: **34/34 passed**.
 
 ## Full run with ordinary inputs
 
-_Pending: the ordinary-input run is still in progress and will be recorded here._
+`node tools/fullrun.mjs http://127.0.0.1:4173/ low - 960x540` against the production build: real
+canvas drags, clicks and right-clicks plus DOM buttons, with no fast-forward and no fixtures. The
+logical snapshot is only read to decide moves and to log evidence. Every tower placement is
+verified against the simulation.
+
+* **Turn 0:** placed the Needle by drag into socket 2. Sacrificed Polish + Quicken, chose Last Light
+  from the three offers, and placed it in socket 5 (energy 6 → 0).
+* **Turns 1–7:** played actives and passives by click (Quicken by click → tower click), then End Turn.
+  Integrity after each turn: 100, 100, 100, 100, 82, 54, 6. Up to 40 foes were frozen on the board
+  during a turn.
+* **Outcome: DEFEAT in wave 8** after 198 kills and 42 arrivals (237.5 s of simulation, 1173 s of
+  wall time). Restart then produced a fresh run (Integrity 100, 10-card deck, empty sockets).
+  0 console errors.
+
+With only two sockets and the placeholder balance, losing late is expected (`docs/TUNING.md`:
+the scripted "seeker" policy wins 6/20). Per-turn log: `docs/evidence/fullrun-defeat.json`.
+Because SwiftShader runs the simulation far below real time, this run is **not** evidence of
+real-time pacing feel.
 
 ## Screenshots (`docs/screenshots/`)
 
