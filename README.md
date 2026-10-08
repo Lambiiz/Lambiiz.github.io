@@ -34,6 +34,27 @@ node tools/fullrun.mjs http://127.0.0.1:4173/ low - 960x540   # one whole run wi
 
 A desktop browser with WebGL2 is required; if it is unavailable the page shows a support message.
 
+## GitHub Pages
+
+The production build is fully static (relative asset paths, fonts bundled, no service calls), so
+`dist/` runs from the site root or any subfolder — verified by serving it at `/palimpsest/`.
+
+`.github/workflows/pages.yml` runs on every push to `palimpsest`: `npm ci` → `npm test` →
+`npm run build` → uploads `dist/` as a Pages artifact. Deployment is **manual and opt-in**,
+because this repository's live site is currently a different game served from `main`'s root and
+an Actions deployment replaces whatever Pages serves. To publish PALIMPSEST:
+
+1. **Settings → Pages → Build and deployment → Source: "GitHub Actions"** (this switches the
+   site away from the `main` branch).
+2. **Settings → Environments → github-pages → Deployment branches**: allow `palimpsest`
+   (by default only the default branch may deploy).
+3. **Actions → "PALIMPSEST Pages" → Run workflow** on `palimpsest`, tick **deploy**.
+   The game appears at `https://lambiiz.github.io/`.
+
+To keep the existing game and host PALIMPSEST beside it instead, copy `dist/` into a
+`palimpsest/` folder on the branch Pages serves; it will run at
+`https://lambiiz.github.io/palimpsest/`.
+
 ## How to play
 
 * **Begin the Trials** starts a run (and unlocks audio).

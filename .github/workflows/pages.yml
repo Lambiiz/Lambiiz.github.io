@@ -1,0 +1,54 @@
+name: PALIMPSEST Pages
+
+# Every push to `palimpsest` runs the tests and builds the static game into a GitHub Pages
+# artifact. Deploying is a deliberate, manual step (Actions → "PALIMPSEST Pages" → Run workflow
+# with deploy = true) because this repository's live site is currently served from `main`;
+# deploying through Actions replaces whatever Pages is serving. See README → "GitHub Pages".
+on:
+  push:
+    branches: [palimpsest]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the build to GitHub Pages (replaces the current site)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: palimpsest-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build # typecheck + vite build into dist/ (relative base: works at / or any subpath)
+      - name: Disable Jekyll processing
+        run: touch dist/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
