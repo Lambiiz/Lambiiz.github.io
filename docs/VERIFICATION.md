@@ -14,10 +14,10 @@ WebGL2 runs on ANGLE → SwiftShader, a CPU rasterizer:
 | Command | Result |
 |---|---|
 | `npm run typecheck` | passes (strict) |
-| `npm test` | **57/57** Vitest tests pass (`simulation`, `deck`, `phases`, balance report) |
+| `npm test` | **60/60** Vitest tests pass (`simulation`, `deck`, `phases`, balance report) |
 | `npm run build` | passes, ≈ 750 kB JS (≈ 200 kB gzip) + bundled fonts; published to the repo root for Pages |
 | `npm run balance` | table in `docs/TUNING.md` (placeholder balance) |
-| `npm run smoke` | **41/41** checks, 0 console errors (`docs/evidence/smoke-report.json`) |
+| `npm run smoke` | **42/42** checks, 0 console errors (`docs/evidence/smoke-report.json`) |
 | `node tools/fullrun.mjs <preview> low - 960x540` | one whole run with ordinary inputs (see below) |
 
 ## Deterministic checks (Vitest)
@@ -25,10 +25,13 @@ WebGL2 runs on ANGLE → SwiftShader, a CPU rasterizer:
 * **Turn rules:** opening hand of 4 always contains the tower; 6 energy per turn; tower 3 / common 1;
   overspending refused; End Turn discards the hand; empty draw pile reshuffles the discard.
 * **Passives / actives:** passives add permanent modifiers (+5% attack speed shortens the interval,
-  +5% damage and range multiply, max Integrity raises the cap and restores the added amount);
-  played cards leave the deck. Stray Memory hits a random foe for exactly 50% of the average tower
+  +5% damage and range multiply, max Integrity raises the cap and restores the added amount); a
+  played passive goes to the discard pile and stacks again when replayed; actives and towers
+  leave the deck. Stray Memory hits a random foe for exactly 50% of the average tower
   DPS; a second copy halves the cooldown; actives hold with nothing to do (no foes, no towers, full
   Integrity). Tower stats (damage, DPS, attack speed, range, projectiles) follow the modifiers.
+* **Dust:** a deck under 4 cards is topped up with Dust at the start of a turn (the opening tower
+  guarantee still holds); Dust cannot be played, is never offered, and can be sacrificed or purged.
 * **Time speed:** 1×/2×/3× run 60/120/180 fixed steps for the same 60 frames.
 * **Sacrifice / purge:** two marked → three offers; a matching pair guarantees that card among
   them; unlimited sacrifices; one purge per turn; a third mark replaces the oldest.
@@ -44,7 +47,7 @@ WebGL2 runs on ANGLE → SwiftShader, a CPU rasterizer:
 
 Real mouse moves, drags, clicks and right-clicks on the canvas and real DOM buttons. Fixtures only
 *reach* states quickly (defeat, victory, charge poses, swarm stress) and are labelled.
-Run 2026-10-08T20:03:01.057Z: **41/41 passed**.
+Run 2026-10-08T20:48:36.891Z: **42/42 passed**.
 
 | | Check |
 |---|---|
@@ -53,8 +56,9 @@ Run 2026-10-08T20:03:01.057Z: **41/41 passed**.
 | ✔ | Hovering a hand card shows its 14px tooltip and the tower range preview |
 | ✔ | Dropping a tower on a locked socket is refused and the card stays in hand |
 | ✔ | Dragging the Needle into an open socket places it for 3 energy and removes it from the deck cycle |
-| ✔ | Clicking a passive plays it for 1 energy, applies +5% damage permanently and removes it from the deck |
+| ✔ | Clicking a passive plays it for 1 energy, applies +5% damage permanently and sends the card to the discard pile |
 | ✔ | Hovering a placed tower lists Damage, DPS, Attack speed, Range, Target and Projectiles with modifiers applied |
+| ✔ | Clicking Dust does not play it and costs nothing |
 | ✔ | Playing an active card installs it with a cooldown icon at the top of the screen |
 | ✔ | During a turn the modifier panel lists the current modifiers |
 | ✔ | Right-clicking two cards marks them and offers Sacrifice |
@@ -98,13 +102,13 @@ After the first End Turn it presses the in-game **3×** button, as an impatient 
 logical snapshot is only read to decide moves and to log evidence. Every tower placement is
 verified against the simulation.
 
-* **Turn 0:** placed the Needle by drag. Sacrificed Sharpened Grief + Sturdy Vessel and chose
+* **Turn 0:** placed the Needle by drag. Sacrificed Stray Memory + Sturdy Vessel and chose
   Kindred Thread, then placed it in the second open socket.
-* **Turns 1–2:** played every passive and active by click: Stray Memory ×2, Mend the Vessel ×1,
-  attack speed +10%, damage +5%, range +5%. Played cards left the deck, so **the deck was empty
-  from turn 2 on** (turns 3–7 drew nothing).
-* **Outcome: VICTORY** after 271 kills and 19 arrivals, ending at 26 Integrity (265 s of
-  simulation, 499 s of wall time at 3×). Restart then produced a fresh run. 0 console errors.
+* **Turns 1–7:** played four cards a turn by click. Passives returned through the discard pile
+  and stacked again, reaching +60% damage, +50% attack speed and +20% range by turn 7, with
+  Stray Memory and Mend the Vessel in play. The deck held 5 cards, so no Dust was needed.
+* **Outcome: VICTORY** at 100 Integrity: 286 kills, 0 arrivals (256 s of simulation, 538 s of
+  wall time at 3×). Restart then produced a fresh run. 0 console errors.
 
 Per-turn log: `docs/evidence/fullrun-victory.json`. Because SwiftShader caps the frame rate, this
 run is **not** evidence of real-time pacing feel.

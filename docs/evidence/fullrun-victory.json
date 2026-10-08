@@ -1,5 +1,5 @@
 {
-  "startedAt": "2026-10-08T19:51:08.889Z",
+  "startedAt": "2026-10-08T20:48:36.891Z",
   "quality": "low",
   "viewport": "960x540",
   "turns": [
@@ -19,7 +19,7 @@
       "foesFrozen": 0,
       "actions": [
         "placed needle in socket 2",
-        "sacrificed keen+sturdy → thread",
+        "sacrificed stray+sturdy → thread",
         "placed thread in socket 5"
       ],
       "towers": [
@@ -30,60 +30,29 @@
         "thread",
         null
       ],
-      "wallSeconds": 33
+      "wallSeconds": 29
     },
     {
       "turn": 1,
       "hp": 100,
       "maxHp": 100,
       "mods": {
-        "attackSpeed": 0.05,
-        "damage": 0.05,
+        "attackSpeed": 0,
+        "damage": 0.1,
         "range": 0,
         "maxIntegrity": 0
       },
       "actives": [
-        "stray×2"
-      ],
-      "energyLeft": 2,
-      "deck": 3,
-      "foesFrozen": 10,
-      "actions": [
-        "played stray",
-        "played keen",
-        "played stray",
-        "played swift"
-      ],
-      "towers": [
-        null,
-        "needle",
-        null,
-        null,
-        "thread",
-        null
-      ],
-      "wallSeconds": 99
-    },
-    {
-      "turn": 2,
-      "hp": 100,
-      "maxHp": 100,
-      "mods": {
-        "attackSpeed": 0.1,
-        "damage": 0.05,
-        "range": 0.05,
-        "maxIntegrity": 0
-      },
-      "actives": [
-        "stray×2",
+        "stray×1",
         "mend×1"
       ],
-      "energyLeft": 3,
-      "deck": 0,
-      "foesFrozen": 11,
+      "energyLeft": 2,
+      "deck": 5,
+      "foesFrozen": 9,
       "actions": [
-        "played swift",
-        "played farsight",
+        "played keen",
+        "played stray",
+        "played keen",
         "played mend"
       ],
       "towers": [
@@ -94,26 +63,64 @@
         "thread",
         null
       ],
-      "wallSeconds": 158
+      "wallSeconds": 91
+    },
+    {
+      "turn": 2,
+      "hp": 100,
+      "maxHp": 100,
+      "mods": {
+        "attackSpeed": 0.1,
+        "damage": 0.2,
+        "range": 0,
+        "maxIntegrity": 0
+      },
+      "actives": [
+        "stray×1",
+        "mend×1"
+      ],
+      "energyLeft": 2,
+      "deck": 5,
+      "foesFrozen": 11,
+      "actions": [
+        "played swift",
+        "played swift",
+        "played keen",
+        "played keen"
+      ],
+      "towers": [
+        null,
+        "needle",
+        null,
+        null,
+        "thread",
+        null
+      ],
+      "wallSeconds": 154
     },
     {
       "turn": 3,
       "hp": 100,
       "maxHp": 100,
       "mods": {
-        "attackSpeed": 0.1,
-        "damage": 0.05,
+        "attackSpeed": 0.2,
+        "damage": 0.25,
         "range": 0.05,
         "maxIntegrity": 0
       },
       "actives": [
-        "stray×2",
+        "stray×1",
         "mend×1"
       ],
-      "energyLeft": 6,
-      "deck": 0,
-      "foesFrozen": 13,
-      "actions": [],
+      "energyLeft": 2,
+      "deck": 5,
+      "foesFrozen": 14,
+      "actions": [
+        "played farsight",
+        "played keen",
+        "played swift",
+        "played swift"
+      ],
       "towers": [
         null,
         "needle",
@@ -122,26 +129,31 @@
         "thread",
         null
       ],
-      "wallSeconds": 214
+      "wallSeconds": 222
     },
     {
       "turn": 4,
       "hp": 100,
       "maxHp": 100,
       "mods": {
-        "attackSpeed": 0.1,
-        "damage": 0.05,
-        "range": 0.05,
+        "attackSpeed": 0.25,
+        "damage": 0.35,
+        "range": 0.1,
         "maxIntegrity": 0
       },
       "actives": [
-        "stray×2",
+        "stray×1",
         "mend×1"
       ],
-      "energyLeft": 6,
-      "deck": 0,
-      "foesFrozen": 20,
-      "actions": [],
+      "energyLeft": 2,
+      "deck": 5,
+      "foesFrozen": 19,
+      "actions": [
+        "played keen",
+        "played farsight",
+        "played keen",
+        "played swift"
+      ],
       "towers": [
         null,
         "needle",
@@ -150,26 +162,31 @@
         "thread",
         null
       ],
-      "wallSeconds": 261
+      "wallSeconds": 281
     },
     {
       "turn": 5,
       "hp": 100,
       "maxHp": 100,
       "mods": {
-        "attackSpeed": 0.1,
-        "damage": 0.05,
-        "range": 0.05,
+        "attackSpeed": 0.35,
+        "damage": 0.39999999999999997,
+        "range": 0.15000000000000002,
         "maxIntegrity": 0
       },
       "actives": [
-        "stray×2",
+        "stray×1",
         "mend×1"
       ],
-      "energyLeft": 6,
-      "deck": 0,
-      "foesFrozen": 25,
-      "actions": [],
+      "energyLeft": 2,
+      "deck": 5,
+      "foesFrozen": 17,
+      "actions": [
+        "played swift",
+        "played farsight",
+        "played swift",
+        "played keen"
+      ],
       "towers": [
         null,
         "needle",
@@ -178,26 +195,31 @@
         "thread",
         null
       ],
-      "wallSeconds": 312
+      "wallSeconds": 343
     },
     {
       "turn": 6,
       "hp": 100,
       "maxHp": 100,
       "mods": {
-        "attackSpeed": 0.1,
-        "damage": 0.05,
-        "range": 0.05,
+        "attackSpeed": 0.39999999999999997,
+        "damage": 0.49999999999999994,
+        "range": 0.2,
         "maxIntegrity": 0
       },
       "actives": [
-        "stray×2",
+        "stray×1",
         "mend×1"
       ],
-      "energyLeft": 6,
-      "deck": 0,
-      "foesFrozen": 17,
-      "actions": [],
+      "energyLeft": 2,
+      "deck": 5,
+      "foesFrozen": 13,
+      "actions": [
+        "played keen",
+        "played keen",
+        "played farsight",
+        "played swift"
+      ],
       "towers": [
         null,
         "needle",
@@ -206,26 +228,31 @@
         "thread",
         null
       ],
-      "wallSeconds": 359
+      "wallSeconds": 403
     },
     {
       "turn": 7,
       "hp": 100,
       "maxHp": 100,
       "mods": {
-        "attackSpeed": 0.1,
-        "damage": 0.05,
-        "range": 0.05,
+        "attackSpeed": 0.49999999999999994,
+        "damage": 0.6,
+        "range": 0.2,
         "maxIntegrity": 0
       },
       "actives": [
-        "stray×2",
+        "stray×1",
         "mend×1"
       ],
-      "energyLeft": 6,
-      "deck": 0,
-      "foesFrozen": 24,
-      "actions": [],
+      "energyLeft": 2,
+      "deck": 5,
+      "foesFrozen": 15,
+      "actions": [
+        "played swift",
+        "played keen",
+        "played keen",
+        "played swift"
+      ],
       "towers": [
         null,
         "needle",
@@ -234,18 +261,18 @@
         "thread",
         null
       ],
-      "wallSeconds": 408
+      "wallSeconds": 464
     }
   ],
   "console": [],
-  "seed": 1421940412,
+  "seed": 3347636122,
   "outcome": "VICTORY",
   "final": {
     "wave": 8,
-    "hp": 26,
-    "kills": 271,
-    "arrivals": 19,
-    "simTime": 265.26666666666665,
+    "hp": 100,
+    "kills": 286,
+    "arrivals": 0,
+    "simTime": 256.05,
     "towers": [
       null,
       "needle",
@@ -255,15 +282,15 @@
       null
     ]
   },
-  "wallSeconds": 499,
+  "wallSeconds": 538,
   "perf": {
     "frames": 240,
-    "simSecondsPerWallSecond": 0.616,
-    "avgMs": 471.51,
-    "p95Ms": 849.9,
-    "maxMs": 1016.7,
-    "updateMs": 1.16,
-    "renderSubmitMs": 2.57,
+    "simSecondsPerWallSecond": 0.668,
+    "avgMs": 476.16,
+    "p95Ms": 899.8,
+    "maxMs": 1366.6,
+    "updateMs": 1.43,
+    "renderSubmitMs": 7.15,
     "dpr": 1,
     "quality": "low",
     "viewport": {
@@ -272,5 +299,5 @@
     }
   },
   "restartOk": true,
-  "finishedAt": "2026-10-08T19:59:53.920Z"
+  "finishedAt": "2026-10-08T20:58:02.228Z"
 }
