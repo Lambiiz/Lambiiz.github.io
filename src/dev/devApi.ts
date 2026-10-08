@@ -183,10 +183,12 @@ export function installDevApi(app: App): void {
     },
     perf() {
       const f = app.frameTimes.slice(-240);
+      const simRate = app.simRate();
       const sorted = [...f].sort((a, b) => a - b);
       const avg = f.reduce((s, x) => s + x, 0) / Math.max(1, f.length);
       return {
         frames: f.length,
+        simSecondsPerWallSecond: simRate,
         avgMs: +avg.toFixed(2),
         p95Ms: +(sorted[Math.floor(sorted.length * 0.95)] ?? 0).toFixed(2),
         maxMs: +(sorted[sorted.length - 1] ?? 0).toFixed(2),

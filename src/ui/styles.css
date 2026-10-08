@@ -545,11 +545,23 @@ button.danger {
   :root {
     --panel-w: 300px;
   }
+  #hud {
+    gap: 14px;
+  }
+  .brand {
+    display: none;
+  }
   .meter {
     min-width: 0;
   }
   .meter .bar {
-    width: 110px;
+    width: 90px;
+  }
+  .volume input {
+    width: 60px;
+  }
+  .hud-buttons button {
+    white-space: nowrap;
   }
 }
 
@@ -564,4 +576,22 @@ body.capture #pause-overlay,
 body.capture #toast,
 body.capture #inspect {
   display: none !important;
+}
+
+.volume {
+  display: flex;
+  align-items: center;
+}
+
+.volume input {
+  width: 84px;
+  accent-color: var(--turq);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }

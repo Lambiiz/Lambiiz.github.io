@@ -90,13 +90,14 @@ export class EnemiesView {
     const enamel = track(new THREE.MeshStandardMaterial({ color: 0x1d2a4c, roughness: 0.28, metalness: 0.25 }));
     const darkBrass = track(new THREE.MeshStandardMaterial({ color: 0x8c6a34, metalness: 0.9, roughness: 0.32 }));
 
-    const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, shadow = false) => {
+    const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, _shadow = false) => {
       track(geo);
       const m = new THREE.InstancedMesh(geo, mat, CAPACITY);
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       m.setColorAt(0, white);
       m.count = 0;
-      m.castShadow = shadow;
+      m.castShadow = false; // crowds use pooled blob shadows, never the realtime shadow map
+      void _shadow;
       // conservative bounds covering the whole arena; instances move every frame
       m.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1, 0), 16);
       m.frustumCulled = false;

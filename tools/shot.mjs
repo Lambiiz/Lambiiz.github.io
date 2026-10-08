@@ -17,6 +17,6 @@ if (script) {
   if (r !== undefined) console.log('result:', JSON.stringify(r));
 }
 await page.waitForTimeout(+wait);
-await page.screenshot({ path: out });
+await page.screenshot({ path: out, timeout: 180000 });
 console.log(logs.slice(0, 40).join('\n'));
 await browser.close();

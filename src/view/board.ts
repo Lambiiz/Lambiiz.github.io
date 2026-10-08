@@ -120,7 +120,7 @@ export class BoardView {
     const darkBrass = track(new THREE.MeshStandardMaterial({ color: 0x8a7041, map: brassTex, metalness: 0.8, roughness: 0.5 }));
     const ceramicTex = tex(art.drawCeramic());
     ceramicTex.wrapS = ceramicTex.wrapT = THREE.RepeatWrapping;
-    const ceramic = track(new THREE.MeshStandardMaterial({ color: 0xffffff, map: ceramicTex, roughness: 0.42, metalness: 0.0 }));
+    const ceramic = track(new THREE.MeshStandardMaterial({ color: 0xd9cfb6, map: ceramicTex, roughness: 0.5, metalness: 0.0 }));
     const enamelTex = tex(art.drawLidEnamel());
     const enamel = track(
       new THREE.MeshPhysicalMaterial({

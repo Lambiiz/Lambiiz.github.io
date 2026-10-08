@@ -409,7 +409,7 @@ export class CardsView {
    * @param charge per-instance charge fraction from the simulation
    */
   update(presentDt: number, simTime: number, charge: Map<number, number>): void {
-    const dt = Math.min(presentDt, 0.05);
+    const dt = Math.min(presentDt, 0.1); // springs are sub-stepped at 240 Hz below, so this stays stable
     this.railLevel += (this.railTarget - this.railLevel) * (1 - Math.exp(-dt * 7));
     this.rail.visible = this.railLevel > 0.01;
     const h = (CARD_H * TRAY.scale) / 2;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BASE, FIXED_DT, TRIALS } from '../src/game/content';
+import { BASE, FIXED_DT, TRIALS, WEAPONS } from '../src/game/content';
 import { FixedStepClock } from '../src/game/clock';
 import { chargeFraction, footprintGap, Simulation, touchesBase } from '../src/game/simulation';
 import type { SimEvent, TrialDef } from '../src/game/types';
@@ -211,15 +211,19 @@ describe('weapons', () => {
     expect(e.hp).toBe(91);
   });
 
-  it('kindred thread hits up to three distinct enemies with 10/7/5 within hop range', () => {
+  it('kindred thread hits up to three distinct enemies with descending hop damage within hop range', () => {
     const sim = quietSim();
     sim.installWeapon(0, 'thread');
+    const [d1, d2, d3] = WEAPONS.thread.chainDamage!;
+    const hop = WEAPONS.thread.chainHopRange!;
     const a = dummy(sim, 0, 6, 100);
-    const b = dummy(sim, 2.0, 6, 100);
-    const c = dummy(sim, 4.0, 6, 100);
-    const far = dummy(sim, 7.5, 6, 100);
-    runTicks(sim, Math.round(2.4 / FIXED_DT));
-    expect([a.hp, b.hp, c.hp, far.hp]).toEqual([90, 93, 95, 100]);
+    const b = dummy(sim, hop * 0.7, 6, 100);
+    const c = dummy(sim, hop * 1.4, 6, 100);
+    const far = dummy(sim, hop * 1.4 + hop + 0.3, 6, 100); // beyond the last hop
+    const fourth = dummy(sim, hop * 1.4 + hop * 0.8, 6.0, 100); // within a hop of the third target, but the chain is capped at 3
+    runTicks(sim, Math.round(WEAPONS.thread.interval / FIXED_DT));
+    expect([a.hp, b.hp, c.hp, far.hp]).toEqual([100 - d1, 100 - d2, 100 - d3, 100]);
+    expect(fourth.hp).toBe(100);
   });
 
   it('kindred thread never revisits an enemy', () => {
@@ -227,21 +231,24 @@ describe('weapons', () => {
     sim.installWeapon(0, 'thread');
     const a = dummy(sim, 0, 6, 100);
     const b = dummy(sim, 1, 6, 100);
-    runTicks(sim, Math.round(2.4 / FIXED_DT));
-    expect([a.hp, b.hp]).toEqual([90, 93]);
+    runTicks(sim, Math.round(WEAPONS.thread.interval / FIXED_DT));
+    const [d1, d2] = WEAPONS.thread.chainDamage!;
+    expect([a.hp, b.hp]).toEqual([100 - d1, 100 - d2]);
   });
 
   it('mercy bell is ready only with an enemy in radius and hits all within it once', () => {
     const sim = quietSim();
     const w = sim.installWeapon(0, 'bell');
-    const out = dummy(sim, 0, 7, 100);
+    const r = WEAPONS.bell.pulseRadius!;
+    const out = dummy(sim, 0, r + 0.3, 100);
     runTicks(sim, 300);
     expect(w.shots).toBe(0);
     expect(chargeFraction(w)).toBe(1);
-    const inA = dummy(sim, 0, 5.5, 100);
+    const inA = dummy(sim, 0, r - 0.2, 100);
     const inB = dummy(sim, -4, 3, 100);
     runTicks(sim, 1);
-    expect([inA.hp, inB.hp, out.hp]).toEqual([86, 86, 100]);
+    const d = WEAPONS.bell.damage;
+    expect([inA.hp, inB.hp, out.hp]).toEqual([100 - d, 100 - d, 100]);
   });
 
   it('polished memory multiplies damage additively', () => {

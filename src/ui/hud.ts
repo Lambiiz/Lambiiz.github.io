@@ -9,6 +9,7 @@ export interface HudCallbacks {
   pause(): void;
   resume(): void;
   toggleMute(): void;
+  setVolume(v: number): void;
   toggleQuality(): void;
   restart(): void;
   selectOffer(i: number): void;
@@ -98,6 +99,7 @@ export class Hud {
         <div class="hud-buttons">
           <button id="btn-pause" title="Pause (P)">Pause</button>
           <button id="btn-mute" title="Mute (M)">Mute</button>
+          <label class="volume" title="Volume"><span class="sr-only">Volume</span><input id="volume" type="range" min="0" max="100" value="70" aria-label="Volume" /></label>
           <button id="btn-quality" title="Toggle quality (Q)">Quality: High</button>
           <button id="btn-restart" class="danger" title="Restart (R)">Restart</button>
         </div>
@@ -213,6 +215,10 @@ export class Hud {
       this.el[id].addEventListener('click', h);
       this.offListeners.push(() => this.el[id].removeEventListener('click', h));
     };
+    const vol = root.querySelector('#volume') as HTMLInputElement;
+    const onVol = () => cb.setVolume(Number(vol.value) / 100);
+    vol.addEventListener('input', onVol);
+    this.offListeners.push(() => vol.removeEventListener('input', onVol));
     delegate('offer-list', 'data-offer', (i) => cb.selectOffer(i));
     delegate('socket-list', 'data-slot', (s) => cb.placeSlot(s));
   }

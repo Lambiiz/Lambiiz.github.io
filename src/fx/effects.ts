@@ -344,6 +344,7 @@ export class Effects {
   private lastSimTime = 0;
   private presentTime = 0;
   private particleScale = 1;
+  private ambientDust = 260;
   stats = { ribbons: 0, rings: 0, particles: 0, shards: 0, dropped: 0 };
 
   constructor(renderer: THREE.WebGLRenderer, seed: number) {
@@ -369,7 +370,7 @@ export class Effects {
       this.rings.push({ mesh, mat, active: false, born: 0, life: 0.4, r0: 0.5, r1: 6, presentation: false, alpha: 1 });
     }
     this.particles = new ParticlePool(this.root, 1200, false);
-    this.dust = new ParticlePool(this.root, 300, true);
+    this.dust = new ParticlePool(this.root, 420, true);
 
     // shards
     const shardGeo = new THREE.TetrahedronGeometry(0.09, 0);
@@ -429,7 +430,7 @@ export class Effects {
 
   setQuality(particleBudget: number, dustCount: number): void {
     this.particles.budget = particleBudget;
-    this.dust.budget = dustCount;
+    this.ambientDust = dustCount;
   }
 
   setView(camera: THREE.OrthographicCamera, viewportHeight: number): void {
@@ -441,7 +442,7 @@ export class Effects {
   }
 
   private seedDust(): void {
-    for (let i = 0; i < 300; i++) this.spawnDust(this.rng.range(0, 14));
+    for (let i = 0; i < this.ambientDust; i++) this.spawnDust(this.rng.range(0, 14));
   }
 
   private spawnDust(age = 0): void {
@@ -711,7 +712,8 @@ export class Effects {
     r.mesh.position.set(p.x, p.y + 0.05, p.z);
     for (let i = 0; i < 14; i++) {
       const a = (i / 14) * Math.PI * 2;
-      this.particles.emit(new THREE.Vector3(p.x + Math.cos(a) * 1.0, p.y + 0.1, p.z + Math.sin(a) * 1.2), new THREE.Vector3(Math.cos(a) * 0.6, 1.2, Math.sin(a) * 0.6), hdr(0x69dad0, 2), 0.09, 0.5, this.lastSimTime, 0);
+      // presentation-time pool: placement happens while combat is frozen
+      this.dust.emit(new THREE.Vector3(p.x + Math.cos(a) * 1.0, p.y + 0.1, p.z + Math.sin(a) * 1.2), new THREE.Vector3(Math.cos(a) * 0.6, 1.2, Math.sin(a) * 0.6), hdr(0x69dad0, 2), 0.09, 0.5, this.presentTime, 0);
     }
   }
 
@@ -874,7 +876,8 @@ export class Effects {
 
     this.particles.update(simTime, simDt);
     this.dust.update(this.presentTime, presentDt);
-    while (this.dust.liveCount < Math.min(this.dust.budget, 300)) this.spawnDust();
+    // ambient dust keeps ~120 slots free for placement/ceremony motes
+    while (this.dust.liveCount < this.ambientDust) this.spawnDust();
 
     this.stats.ribbons = nr;
     this.stats.rings = ng;

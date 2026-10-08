@@ -11,6 +11,6 @@ await p.waitForFunction(() => !!window.__PALIMPSEST__, null, { timeout: 60000 })
 const r = await p.evaluate(script);
 if (r !== undefined) console.log('result:', typeof r === 'string' ? r : JSON.stringify(r));
 await p.waitForTimeout(+wait);
-await p.screenshot({ path: out, clip: { x: +x, y: +y, width: +w, height: +h } });
+await p.screenshot({ path: out, clip: { x: +x, y: +y, width: +w, height: +h }, timeout: 180000 });
 console.log(logs.join('\n'));
 await b.close();

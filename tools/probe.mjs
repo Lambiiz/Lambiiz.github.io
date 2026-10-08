@@ -1,18 +1,12 @@
 import { chromium } from 'playwright';
 const b = await chromium.launch({ args: ['--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist'] });
-const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+for (const [w,h] of [[1280,720],[960,540]]) {
+const p = await b.newPage({ viewport: { width: w, height: h } });
 await p.goto('http://127.0.0.1:5173/');
 await p.waitForFunction(() => !!window.__PALIMPSEST__, null, { timeout: 60000 });
-await p.evaluate(() => { __PALIMPSEST__.setQuality('low'); __PALIMPSEST__.start(77); __PALIMPSEST__.skipToTrialEnd(0.2); __PALIMPSEST__.advanceTicks(30); __PALIMPSEST__.settle(1.5); });
-const s = await p.evaluate(() => __PALIMPSEST__.snapshot());
-const wi = s.draft.offer.findIndex((id) => ['needle','light','thread','bell'].includes(id));
-const from = await p.evaluate((i) => __PALIMPSEST__.offerScreen(i), wi);
-const to = await p.evaluate(() => __PALIMPSEST__.socketScreen(0));
-console.log('phase', s.phase, 'from', from, 'to', to);
-await p.mouse.move(from.x, from.y); await p.mouse.down();
-for (let i = 1; i <= 10; i++) await p.mouse.move(from.x + (to.x-from.x)*i/10, from.y + (to.y-from.y)*i/10);
-await p.screenshot({ path: 'tools/out/occ-mid.png' });
-await p.mouse.up();
-const s2 = await p.evaluate(() => __PALIMPSEST__.snapshot());
-console.log(JSON.stringify(s2.draft), JSON.stringify(s2.slots.map(x=>x&&x.id)));
+await p.evaluate(() => { __PALIMPSEST__.setQuality('low'); __PALIMPSEST__.start(3); });
+await p.waitForTimeout(20000);
+console.log(w, h, JSON.stringify(await p.evaluate(() => __PALIMPSEST__.perf())));
+await p.close();
+}
 await b.close();

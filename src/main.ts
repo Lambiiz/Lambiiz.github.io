@@ -40,6 +40,7 @@ export class App {
   frameTimes: number[] = [];
   /** [update ms, render-submit ms] per frame, for profiling. */
   cpuTimes: [number, number][] = [];
+  private rateHistory: [number, number][] = [];
   loops = 0;
 
   private lastNow: number | null = null;
@@ -65,6 +66,7 @@ export class App {
       pause: () => this.controller.pause(),
       resume: () => this.resume(),
       toggleMute: () => this.audio.setMuted(!this.audio.muted),
+      setVolume: (v) => this.audio.setVolume(v),
       toggleQuality: () => this.setQuality(this.rig.quality === 'high' ? 'low' : 'high'),
       restart: () => this.restart(),
       selectOffer: (i) => this.selectOffer(i),
@@ -113,7 +115,8 @@ export class App {
   }
 
   // ------------------------------------------------------------------ commands
-  start(seed = freshSeed()): void {
+  /** Normal starts use a fresh seed; `?seed=N` replays a displayed seed (developer replay). */
+  start(seed = Number(new URLSearchParams(location.search).get('seed')) || freshSeed()): void {
     this.audio.unlock();
     this.controller.startRun(seed);
     this.audio.phase('start');
@@ -212,7 +215,10 @@ export class App {
   private onPhase(from: string, to: string): void {
     const running = to === 'COMBAT' || to === 'CLEARING';
     this.audio.setCombatActive(running);
-    if (to === 'DRAFT' && from === 'COMBAT') this.audio.phase('draft');
+    if (to === 'DRAFT' && from === 'COMBAT') {
+      this.audio.phase('draft');
+      this.board.setProgress(this.controller.sim.trialIndex + 1); // one aperture light per endured trial
+    }
     if (to === 'COMBAT' && (from === 'DRAFT' || from === 'PLACEMENT')) {
       this.audio.phase('resume');
       this.cards.clearOffers();
@@ -348,16 +354,29 @@ export class App {
   }
 
   // ------------------------------------------------------------------ frame
+  /** Simulation seconds advanced per wall-clock second over the last ~10 s (1.0 = real time). */
+  simRate(): number {
+    const h = this.rateHistory;
+    if (h.length < 2) return 0;
+    const [w0, s0] = h[0];
+    const [w1, s1] = h[h.length - 1];
+    return w1 > w0 ? +((s1 - s0) / (w1 - w0)).toFixed(3) : 0;
+  }
+
   private frame(nowMs: number): void {
     if (this.disposed) return;
     const now = nowMs / 1000;
     const rawDt = this.lastNow === null ? 0 : now - this.lastNow;
     this.lastNow = now;
     const dt = Math.min(Math.max(rawDt, 0), 0.1);
-    if (rawDt > 0 && rawDt < 1) {
+    if (rawDt > 0) {
       this.frameTimes.push(rawDt * 1000);
       if (this.frameTimes.length > 600) this.frameTimes.shift();
     }
+    if (this.controller.isRunning()) {
+      this.rateHistory.push([now, this.controller.sim.simTime]);
+      while (this.rateHistory.length > 2 && now - this.rateHistory[0][0] > 10) this.rateHistory.shift();
+    } else this.rateHistory.length = 0;
     const t0 = performance.now();
     this.update(this.capture ? 0 : dt, this.capture ? 0 : dt);
     const t1 = performance.now();
