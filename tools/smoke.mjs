@@ -185,6 +185,7 @@ async function toTurn(page) {
   await waitPhase(page, ['COMBAT']);
   const frustum1 = await api(page, () => __PALIMPSEST__.frustum());
   check('End Turn discards the hand and starts wave 1', (await snap(page)).hand.length === 0 && (await snap(page)).trialIndex === 0);
+  await settle(page, 0.5); // let a combat frame redraw the HUD
   check('During a wave the modifier panel is hidden until Tab', !(await page.isVisible('#stats-panel')));
   await page.keyboard.press('Tab');
   await settle(page, 0.3);
