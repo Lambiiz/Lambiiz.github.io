@@ -114,7 +114,8 @@ export class BattleUI {
     this.banner = el('div', { class: 'tbanner hidden' }, el('div', { class: 'tbanner__stripe' }), (this.bannerText = el('b')), (this.bannerSub = el('span')));
     this.narr = el('div', { class: 'narr hidden' });
     this.result = el('div', { class: 'result hidden' });
-    this.root.append(this.callout, this.banner, this.narr, this.result);
+    this.root.append(this.callout, this.banner, this.narr);
+    this.root.parentNode.append(this.result); // results outlive the battle HUD
   }
 
   // ------------------------------------------------------------------ state

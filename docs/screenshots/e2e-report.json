@@ -1,0 +1,98 @@
+{
+  "results": [
+    {
+      "name": "assets load (3 VRMs + animation library)",
+      "ok": true
+    },
+    {
+      "name": "animations retargeted",
+      "ok": true
+    },
+    {
+      "name": "W moves the player forward",
+      "ok": true
+    },
+    {
+      "name": "player plays locomotion anim",
+      "ok": true
+    },
+    {
+      "name": "wall collision holds (door wall)",
+      "ok": true
+    },
+    {
+      "name": "wall collision holds (window wall)",
+      "ok": true
+    },
+    {
+      "name": "talk prompt appears near the student",
+      "ok": true
+    },
+    {
+      "name": "E starts the conversation",
+      "ok": true
+    },
+    {
+      "name": "dialogue plays all lines",
+      "ok": true
+    },
+    {
+      "name": "transition reaches battle menu",
+      "ok": true
+    },
+    {
+      "name": "ESC backs out of the sub-menu",
+      "ok": true
+    },
+    {
+      "name": "battle reaches a result",
+      "ok": true
+    },
+    {
+      "name": "enemy HP decreased",
+      "ok": true
+    },
+    {
+      "name": "weakness discovered (Lumen = WEAK)",
+      "ok": true
+    },
+    {
+      "name": "weakness stun observed",
+      "ok": true
+    },
+    {
+      "name": "phase 2 (Mirror Glaze) triggered",
+      "ok": true
+    },
+    {
+      "name": "enemy attacked the player",
+      "ok": true
+    },
+    {
+      "name": "epilogue conversation plays",
+      "ok": true
+    },
+    {
+      "name": "result screen shown",
+      "ok": true
+    },
+    {
+      "name": "restart returns to the corridor with world reset",
+      "ok": true
+    },
+    {
+      "name": "defeat path triggers at 0 HP",
+      "ok": true
+    },
+    {
+      "name": "retry restarts the battle at full HP",
+      "ok": true
+    },
+    {
+      "name": "no runtime errors",
+      "ok": true
+    }
+  ],
+  "errors": [],
+  "date": "2026-10-08T23:59:55.634Z"
+}

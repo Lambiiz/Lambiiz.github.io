@@ -9,7 +9,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import { captureSourceRest, retargetClip } from '../src/assets/retarget.js';
 const P = new URLSearchParams(location.search);
-const names = (P.get('models') || 'AvatarSample_A,AvatarSample_B,AvatarSample_C,Sendagaya_Shibu,Sendagaya_Shino,Sakurada_Fumiriya,Darkness_Shibu,Victoria_Rubin,Vita,Vivi').split(',');
+const names = (P.get('models') || 'player,student,echo').split(',');
 const clipName = P.get('clip') || 'Idle_Loop';
 const t = parseFloat(P.get('t') || '0.5');
 const restName = P.get('rest') ?? 'A_TPose';

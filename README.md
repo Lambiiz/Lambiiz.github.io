@@ -16,6 +16,9 @@ This is a single, polished vertical slice:
    a telegraphed big attack, a mid-fight affinity shift, items and guarding.
 5. **Resolve**: a victory sequence with an epilogue, or defeat with an instant retry.
 
+![Title](docs/screenshots/01-title.jpg)
+![Battle](docs/screenshots/09-battle-menu.jpg)
+
 All characters, names, symbols, UI, music and story are original. See
 [ASSETS.md](ASSETS.md) for licences and trade-offs.
 
@@ -111,3 +114,7 @@ discovery and stagger, the phase-2 shift, enemy attacks, victory and the epilogu
 restart, the defeat path, and retry. Screenshots and `e2e-report.json` go to the output
 folder. `tools/assetcheck.html` renders the cast side by side, playing any clip, to
 validate retargeting.
+
+The last full run passed **23/23 checks** with no runtime errors
+(`docs/screenshots/e2e-report.json`). Curated frames from that run are in
+`docs/screenshots/`.

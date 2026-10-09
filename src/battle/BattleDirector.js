@@ -37,7 +37,7 @@ export class BattleDirector {
     this.arena = SPOTS.arena.clone();
     this.P = this.arena.clone().add(V(0, 0, -3.3));
     this.E = this.arena.clone().add(V(0, 0, 3.2));
-    this.M = V(2.05, 0, this.arena.z + 4.4);
+    this.M = V(-1.9, 0, this.arena.z + 3.9);
 
     // battle lights are created up-front (intensity 0) so shaders never recompile mid-fight
     this.lightE = new THREE.PointLight(0xff2d6a, 0, 9, 1.6);
@@ -139,7 +139,7 @@ export class BattleDirector {
 
     const m = g.student;
     m.root.position.copy(this.M).add(V(0, 0.12, 0));
-    m.setHeading(-2.6);
+    m.setHeading(2.6);
     m.lookAt(null);
     m.clearExpressions();
     m.setExpression('relaxed', 1);
@@ -186,12 +186,12 @@ export class BattleDirector {
     const P = this.game.player.root.position;
     const E = this.game.echo.root.position;
     const shots = {
-      default: [P.clone().add(V(1.3, 1.55, -2.35)), E.clone().add(V(-0.7, 0.95, 0)), 45],
-      menu: [P.clone().add(V(0.9, 1.5, -2.3)), E.clone().add(V(1.6, 0.9, 0)), 42],
+      default: [P.clone().add(V(-1.2, 1.55, -2.35)), E.clone().add(V(-0.3, 0.95, 0)), 45],
+      menu: [P.clone().add(V(-0.95, 1.5, -2.3)), E.clone().add(V(-0.55, 0.9, 0)), 42],
       castClose: [P.clone().add(V(-1.0, 1.05, 1.55)), P.clone().add(V(0.1, 1.35, 0)), 38],
       enemyClose: [E.clone().add(V(1.3, 1.4, -2.6)), E.clone().add(V(0, 1.25, 0)), 36],
       enemyAction: [E.clone().add(V(-1.25, 2.0, 2.4)), P.clone().add(V(0.3, 1.0, 0)), 44],
-      side: [V(2.45, 1.45, (P.z + E.z) / 2 - 0.4), V(-0.4, 1.15, (P.z + E.z) / 2), 52],
+      side: [V(2.4, 1.7, P.z - 2.0), V(-0.6, 1.1, E.z - 0.8), 50],
       wide: [V(2.3, 2.4, P.z - 3.4), V(-0.3, 1.2, E.z), 50],
       heroLow: [P.clone().add(V(0.55, 0.6, 1.9)), P.clone().add(V(0, 1.5, 0)), 40],
     };
@@ -452,13 +452,12 @@ export class BattleDirector {
       P.play('battleIdle', { fade: 0.3 });
       await g.tasks.sleep(0.45);
     } else if (action.kind === 'skill' && action.id === 'cinderVerse') {
-      await this.cam('castClose');
-      g.rig.setDrift(V(0.12, 0.03, -0.05));
+      await this.cam('menu', 0.3);
+      g.rig.setDrift(V(0.1, 0.02, 0.12));
       P.play('cast', { fade: 0.12, force: true });
       g.audio.play('fire');
-      const front = P.root.position.clone().add(V(0, 1.3, 0.7));
-      const glyph = await g.fx.glyphCircle(front, V(0, 0, 1), { size: 1.5 });
-      await this.cam('side');
+      const front = P.root.position.clone().add(V(0, 1.35, 1.5));
+      const glyph = await g.fx.glyphCircle(front, V(0, 0, 1), { size: 1.4 });
       const hit = this.chest(g.echo);
       await g.fx.fireStream(front, hit, 0.4);
       glyph.dispose();
@@ -700,7 +699,7 @@ export class BattleDirector {
       g.audio.play('defeat');
       g.post.u.duoA.value.set(0x020208);
       g.post.u.duoB.value.set(0x5a6a9a);
-      g.tasks.tween(1.2, (t) => (g.post.u.duotone.value = t * 0.9));
+      g.tasks.tween(1.2, (t) => (g.post.u.duotone.value = t * 0.55));
       await this.cam('wide', 1.2);
       const choice = await this.ui.showResult(
         'defeat',
@@ -778,6 +777,17 @@ export class BattleDirector {
     P.setOverlay(null, 0, 4);
     g.audio.setMusic('explore', { fade: 1.5 });
 
+    // walk over to Mio
+    const from = P.root.position.clone();
+    const to = M.root.position.clone().setY(0).add(from.clone().sub(M.root.position).setY(0).normalize().multiplyScalar(1.45));
+    P.play('walk', { fade: 0.25 });
+    g.rig.move(to.clone().add(V(1.6, 1.5, -1.8)), M.root.position.clone().setY(1.2), 2.2);
+    await g.tasks.tween(Math.max(0.8, from.distanceTo(to) / 1.4), (t) => {
+      P.root.position.lerpVectors(from, to, t);
+      P.faceTowards(to.clone().lerp(M.root.position, 0.5), 1 / 30, 10);
+    });
+    P.play('idle', { fade: 0.3 });
+
     // epilogue
     g.tasks.until((dt) => {
       P.faceTowards(M.root.position, dt, 3);
@@ -793,7 +803,7 @@ export class BattleDirector {
       const mid = p.clone().lerp(m, 0.5);
       const axis = m.clone().sub(p).setY(0).normalize();
       const perp = V(-axis.z, 0, axis.x);
-      if (perp.x > 0) perp.negate();
+      if (perp.x < 0) perp.negate();
       if (name === 'afterMio') return [p.clone().addScaledVector(axis, -0.8).addScaledVector(perp, 0.5).setY(1.6), m.clone().setY(1.42), 34];
       if (name === 'afterKaito') return [m.clone().addScaledVector(axis, 0.75).addScaledVector(perp, 0.45).setY(1.55), p.clone().setY(1.62), 34];
       return [mid.clone().addScaledVector(perp, 2.6).setY(1.4), mid.clone().setY(1.25), 42];

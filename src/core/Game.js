@@ -212,7 +212,7 @@ export class Game {
     if (d < 4.5) this.student.lookAt(this.player.bone('head'), Math.min(1, (4.5 - d) / 2));
     else this.student.lookAt(null);
 
-    const canTalk = d < 1.9 && this.state === 'explore';
+    const canTalk = d < 2.2 && this.state === 'explore';
     if (canTalk) {
       const v = this.student.root.position.clone().add(new THREE.Vector3(0, 1.95, 0)).project(this.camera);
       const x = (v.x * 0.5 + 0.5) * innerWidth;

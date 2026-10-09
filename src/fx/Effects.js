@@ -191,6 +191,7 @@ export class Effects {
     this.camera = camera;
     this.tasks = tasks;
     this.particles = new ParticlePool(scene);
+    addEventListener('resize', () => (this.particles.mat.uniforms.scale.value = innerHeight * 0.5));
     this.group = new THREE.Group();
     scene.add(this.group);
     this.runeTex = runeTexture();

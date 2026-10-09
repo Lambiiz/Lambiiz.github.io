@@ -16,7 +16,7 @@ export const ENCOUNTER = [
   { who: 'kaito', shot: 'onKaito', text: "Can't say I have." },
   { who: 'mio', shot: 'onMio', expr: { sad: 0.7 }, text: "Every evening my reflection gets a little more… *correct*. It smiles when I'm supposed to. It never gets tired." },
   { who: 'mio', shot: 'window', expr: { sad: 0.9 }, cue: 'reveal', music: 'tension', text: "And lately… it's been smiling when I'm *not*." },
-  { who: 'narration', shot: 'closeEcho', cue: 'echoGrin', text: "In the glass, Mio's reflection doesn't move with her. It's grinning." },
+  { who: 'narration', shot: 'closeEcho', cue: 'echoGrin', text: "In the glass, Mio's reflection doesn't move with her. It's staring straight at you." },
   { who: 'echo', shot: 'closeEcho', cue: 'echoTalk', text: "Why stop there? Tell him how ~tired~ you are. …No. I'll tell him myself." },
   { who: 'mio', shot: 'onMio', expr: { surprised: 1 }, cue: 'mioScared', text: 'Sena, step back — it can *hear* us!' },
   { who: 'echo', shot: 'pushEcho', cue: 'echoTalk', text: "I'm the version of you that never fails. Let me ~OUT~, and I'll make everything perfect." },

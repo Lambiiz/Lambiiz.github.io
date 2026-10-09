@@ -169,7 +169,7 @@ check('enemy attacked the player', sawEnemyAttack);
 let epi = 0;
 const tEnd = Date.now() + 400000;
 while (Date.now() < tEnd) {
-  const s = await G(() => ({ result: !document.querySelector('.result').classList.contains('hidden'), waiting: !!window.__game.dialogue.waiting }));
+  const s = await G(() => ({ result: document.querySelector('.result').getBoundingClientRect().width > 0, waiting: !!window.__game.dialogue.waiting }));
   if (s.result) break;
   if (s.waiting) {
     await page.keyboard.press('Enter');
@@ -183,7 +183,7 @@ while (Date.now() < tEnd) {
   await page.waitForTimeout(1500);
 }
 check('epilogue conversation plays', epi >= 3, `lines=${epi}`);
-await waitFor(() => !document.querySelector('.result').classList.contains('hidden'), 60000);
+await waitFor(() => document.querySelector('.result').getBoundingClientRect().width > 0, 60000);
 await page.waitForTimeout(1200);
 await shot(over === 'victory' ? '12-victory' : '12-defeat');
 check('result screen shown', true);
@@ -210,7 +210,7 @@ await page.keyboard.press('Digit1'); // attack — enemy will KO us on its turn
 await waitFor(() => window.__game.battle.sys.over === 'defeat' || window.__game.battle.sys.over === 'victory', 240000);
 const res2 = await G(() => window.__game.battle.sys.over);
 check('defeat path triggers at 0 HP', res2 === 'defeat', res2);
-await waitFor(() => !document.querySelector('.result').classList.contains('hidden'), 240000);
+await waitFor(() => document.querySelector('.result').getBoundingClientRect().width > 0, 240000);
 await page.waitForTimeout(1200);
 await shot('14-defeat');
 await page.keyboard.press('Enter'); // RETRY BATTLE
